@@ -1,0 +1,137 @@
+^G Get Help  ^T  To Files                                                     
+^C Cancel    TAB Complete    const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
+const OpenAI = require('openai');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+const PORT = 3000;
+
+// --- CONFIGURATION ---
+// REPLACE THIS WITH YOUR ACTUAL KEY
+const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY_HERE'; 
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+let aiActive = false;
+if (OPENAI_API_KEY && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY_HERE') {
+    aiActive = true;
+}
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// In-memory Database
+const users = []; // Stores logged in sessions
+const patients = [];
+const nurses = [];
+const painReports = [];
+const messages = []; // Chat history
+
+// Routes
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// Auth & Registration
+app.post('/api/register/patient', (req, res) => {
+    const { name, email, phone, dob, address, postcode, history, regularMeds, painMeds } = req.body;
+    const user = { id: Date.now(), type: 'patient', name, email, phone, dob, address, postcode, history, regularMeds, painMeds };
+    patients.push(user);
+    users.push(user); // Auto login
+    res.json({ success: true, user });
+});
+
+app.post('/api/register/nurse', (req, res) => {
+    const { name, email, phone, empId, dept } = req.body;
+    const user = { id: Date.now(), type: 'nurse', name, email, phone, empId, dept };
+    nurses.push(user);
+    users.push(user); // Auto login
+    res.json({ success: true, user });
+});
+
+app.post('/api/login', (req, res) => {
+    const { name, type } = req.body;
+    const list = type === 'patient' ? patients : nurses;
+    const user = list.find(u => u.name.toLowerCase() === name.toLowerCase());
+    if (user) {
+        users.push(user);
+        res.json({ success: true, user });
+    } else {
+        res.status(404).json({ success: false, message: 'User not found' });
+    }
+});
+
+app.post('/api/logout', (req, res) => {
+    const { userId } = req.body;
+    const index = users.findIndex(u => u.id === userId);
+    if (index > -1) users.splice(index, 1);
+    res.json({ success: true });
+});
+
+// Pain Reports
+app.post('/api/submit-report', (req, res) => {
+    const report = { id: Date.now(), ...req.body, submittedAt: new Date().toISOString(), status: 'pending', responses: [] };
+    painReports.push(report);
+    io.emit('new_report', report); // Real-time alert
+    res.json({ success: true, report });
+});
+
+app.get('/api/reports', (req, res) => res.json(painReports));
+
+// Chat System
+app.get('/api/chat/:userId', (req, res) => {
+    const chats = messages.filter(m => m.patientId == req.params.userId || m.nurseId == req.params.userId);
+    res.json(chats);
+});
+
+app.post('/api/send-message', (req, res) => {
+    const msg = { id: Date.now(), ...req.body, timestamp: new Date().toISOString() };
+    messages.push(msg);
+    io.emit('new_message', msg); // Real-time chat
+    res.json({ success: true, msg });
+});
+
+// AI Treatment Suggestion
+app.post('/api/ai-suggest', async (req, res) => {
+    if (!aiActive) return res.status(503).json({ error: 'AI Key not configured' });
+    
+    const { painLevel, history, lastMeds } = req.body;
+    try {
+        const completion = await openai.chat.completions.create({
+            messages: [
+                { role: "system", content: "You are an expert nurse assistant for Sickle Cell Anemia. Provide concise, safe treatment advice based on NPRS pain scale." },
+                { role: "user", content: `Patient Pain Level: ${painLevel}/10. History: ${history}. Last Meds: ${lastMeds}. Suggest 3 immediate actions.` }
+            ],
+            model: "gpt-3.5-turbo",
+        });
+        res.json({ suggestion: completion.choices[0].message.content });
+    } catch (error) {
+        res.status(500).json({ error: 'AI Error', details: error.message });
+    }
+});
+
+// Nurse Actions
+app.post('/api/send-treatment', (req, res) => {
+    const { reportId, nurseName, treatments, instructions, requestVisit } = req.body;
+    const report = painReports.find(r => r.id == reportId);
+    if (report) {
+        report.status = 'responded';
+        report.responses.push({
+            nurseName, treatments, instructions, requestVisit, time: new Date().toISOString()
+        });
+        io.emit('report_updated', report);
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false });
+    }
+});
+
+server.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`AI Status: ${aiActive ? 'Active' : 'Inactive (Set API Key in server.js)'}`);
+});

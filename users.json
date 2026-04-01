@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1774995542431,
+    "name": "Anup Pohekar",
+    "email": "anup.pohekar@yahoo.co.in",
+    "phone": "anup.pohekar@yahoo.co.in",
+    "password": "ayurved",
+    "role": "patient",
+    "details": {
+      "history": "Sickel cell"
+    },
+    "createdAt": "2026-03-31T22:19:02.431Z"
+  },
+  {
+    "id": 1774995699171,
+    "name": "Kamani Abeywickrema",
+    "email": "kamani@gmail.com",
+    "phone": "kamani@gmail.com",
+    "password": "sky",
+    "role": "nurse",
+    "details": {
+      "history": ""
+    },
+    "createdAt": "2026-03-31T22:21:39.171Z"
+  }
+]
