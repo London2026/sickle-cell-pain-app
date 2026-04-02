@@ -24,7 +24,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- MONGODB CONNECTION ---
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+  .catch(err => console.error('❌ MongoDB Connection Error:', err.message));
 
 // --- DATABASE SCHEMAS ---
 const userSchema = new mongoose.Schema({
@@ -59,7 +59,7 @@ async function seedData() {
       { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen' },
       { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
       { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
-      { id: 'd1', role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
+      { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
     ];
     await User.insertMany(demoUsers);
     console.log('🌱 Demo users seeded.');
@@ -77,7 +77,10 @@ app.post('/api/register', async (req, res) => {
 
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Register Error:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Login
@@ -137,16 +140,35 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response
+// Send Response (FIXED)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
-    await Report.findByIdAndUpdate(reportId, {
-      status: 'responded', response: message, responderName: nurseName, referralType
-    });
+    
+    if (!reportId) return res.status(400).json({ success: false, message: 'Missing Report ID' });
+
+    const updatedReport = await Report.findByIdAndUpdate(
+      reportId, 
+      { 
+        status: 'responded', 
+        response: message, 
+        responderName: nurseName, 
+        referralType: referralType || null 
+      },
+      { new: true } // Return the updated document
+    );
+
+    if (!updatedReport) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    console.log(`✅ Response saved for Report ${reportId}`);
     io.emit('report-updated');
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Response Error:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Chat: Send Message
@@ -167,7 +189,7 @@ app.get('/api/get-messages', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// AI: Generate Report
+// AI: Generate Report with Data for Charts
 app.post('/api/generate-ai-report', async (req, res) => {
   try {
     const { period } = req.body;
@@ -178,28 +200,66 @@ app.post('/api/generate-ai-report', async (req, res) => {
     if (period === 'yearly') cutoff.setFullYear(now.getFullYear() - 1);
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
-    if (reports.length === 0) return res.json({ success: true, report: "No data available." });
+    
+    if (reports.length === 0) {
+      return res.json({ 
+        success: true, 
+        report: "No data available for this period.",
+        chartData: null 
+      });
+    }
+
+    // Prepare Data for Charts
+    const painLevels = reports.map(r => parseInt(r.painLevel));
+    const avgPain = (painLevels.reduce((a, b) => a + b, 0) / painLevels.length).toFixed(1);
+    
+    // Count pain levels for bar chart
+    const painDistribution = Array(11).fill(0);
+    painLevels.forEach(l => painDistribution[l]++);
+
+    // Count medications
+    const medCounts = {};
+    reports.forEach(r => {
+      const med = r.medName || 'Unknown';
+      medCounts[med] = (medCounts[med] || 0) + 1;
+    });
 
     const dataSummary = {
-      totalPatientsTreated: new Set(reports.map(r => r.patientId)).size,
+      totalPatients: new Set(reports.map(r => r.patientId)).size,
       totalReports: reports.length,
-      avgPainLevel: (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / reports.length).toFixed(1),
-      commonMeds: reports.map(r => r.medName).reduce((acc, curr) => { acc[curr] = (acc[curr] || 0) + 1; return acc; }, {}),
+      avgPain: avgPain,
       referrals: reports.filter(r => r.referralType).length
     };
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
-        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
-      ]
-    });
+    // Get AI Text Analysis
+    let aiText = "Analyzing data...";
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+          { role: "system", content: "You are a healthcare analyst. Provide a brief 3-sentence summary of this Sickle Cell data." },
+          { role: "user", content: `Total Reports: ${dataSummary.totalReports}, Avg Pain: ${dataSummary.avgPain}, Referrals: ${dataSummary.referrals}. Summary:` }
+        ]
+      });
+      aiText = completion.choices[0].message.content;
+    } catch (aiErr) {
+      aiText = "AI Analysis unavailable, but charts are generated below.";
+    }
 
-    res.json({ success: true, report: completion.choices[0].message.content });
+    res.json({ 
+      success: true, 
+      report: aiText,
+      chartData: {
+        labels: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+        painData: painDistribution,
+        medLabels: Object.keys(medCounts),
+        medData: Object.values(medCounts),
+        stats: dataSummary
+      }
+    });
   } catch (error) {
     console.error("AI Error:", error);
-    res.json({ success: false, message: "AI Service Unavailable." });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 });
 

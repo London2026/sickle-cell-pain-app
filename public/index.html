@@ -1,9 +1,11 @@
-pbpaste > public/index.html<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sickle Cell Care Connect</title>
+    <!-- Chart.js for Graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #0ea5e9; --primary-dark: #0284c7; --secondary: #64748b;
@@ -74,6 +76,15 @@ pbpaste > public/index.html<!DOCTYPE html>
         }
         .patient-info-box strong { color: var(--primary-dark); }
         .full-width { grid-column: span 2; }
+
+        /* AI Report Styles */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center; }
+        .stat-value { font-size: 1.8rem; font-weight: bold; color: var(--primary); }
+        .stat-label { font-size: 0.85rem; color: var(--secondary); }
+        .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        .chart-wrapper { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; height: 300px; }
+        @media (max-width: 768px) { .charts-container { grid-template-columns: 1fr; } .patient-info-box { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -136,6 +147,12 @@ pbpaste > public/index.html<!DOCTYPE html>
                 <button type="submit" class="btn btn-primary">Register Account</button>
                 <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">Already registered? <a href="#" onclick="toggleAuthMode('login')" style="color: var(--primary);">Login</a></p>
             </form>
+            
+            <!-- Demo Credentials Hint -->
+            <div style="margin-top: 20px; padding: 10px; background: #f1f5f9; border-radius: 6px; font-size: 0.85rem;">
+                <strong>Demo Logins (Password: 123):</strong><br>
+                Patient: patient@demo.com | Nurse: nurse@demo.com | Community: community@demo.com | Doctor: doctor@demo.com
+            </div>
         </div>
     </div>
 
@@ -226,7 +243,7 @@ pbpaste > public/index.html<!DOCTYPE html>
                     <div class="card" style="width: 700px; max-width: 90%; max-height: 90vh; overflow-y: auto;">
                         <h3 id="modal-patient-name">Responding to Patient</h3>
                         
-                        <!-- NEW: Detailed Patient Info Box -->
+                        <!-- Detailed Patient Info Box -->
                         <div id="modal-patient-details" class="patient-info-box"></div>
 
                         <label>Treatment Recommendations (Click to add):</label>
@@ -265,7 +282,7 @@ pbpaste > public/index.html<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- NURSE: AI Reports -->
+                <!-- NURSE: AI Reports with Charts -->
                 <div id="n-reports" class="page-section hidden">
                     <div class="card">
                         <h2 class="section-title">AI Statistical Reports</h2>
@@ -275,7 +292,18 @@ pbpaste > public/index.html<!DOCTYPE html>
                             <button onclick="generateReport('monthly')" class="btn btn-outline">Monthly Report</button>
                             <button onclick="generateReport('yearly')" class="btn btn-outline">Yearly Report</button>
                         </div>
-                        <div id="ai-report-output" style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 100px; white-space: pre-wrap; font-family: monospace;"></div>
+                        
+                        <!-- Stats Cards -->
+                        <div id="stats-cards" class="stats-grid hidden"></div>
+                        
+                        <!-- Charts Area -->
+                        <div id="charts-area" class="charts-container hidden">
+                            <div class="chart-wrapper"><canvas id="painChart"></canvas></div>
+                            <div class="chart-wrapper"><canvas id="medChart"></canvas></div>
+                        </div>
+
+                        <!-- Text Report -->
+                        <div id="ai-report-output" style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; margin-top: 20px;"></div>
                         <button onclick="downloadReport()" class="btn btn-sm btn-primary" style="margin-top:10px;">Save as Text/PDF Ready</button>
                     </div>
                 </div>
@@ -296,7 +324,9 @@ pbpaste > public/index.html<!DOCTYPE html>
     let currentRole = 'patient';
     let selectedTreatments = [];
     let activeReportId = null;
-    let currentReportData = null; // Store full report data for modal
+    let currentReportData = null;
+    let painChartInstance = null;
+    let medChartInstance = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         initNPRSScale();
@@ -432,6 +462,15 @@ pbpaste > public/index.html<!DOCTYPE html>
         if(pageId === 'p-chat' || pageId === 'n-chat') loadChat();
         if(pageId === 'n-dashboard') loadDashboard();
         if(pageId === 'd-dashboard') loadDoctorDashboard();
+        if(pageId === 'n-reports') {
+            // Clear charts when leaving
+            if(painChartInstance) painChartInstance.destroy();
+            if(medChartInstance) medChartInstance.destroy();
+            document.getElementById('stats-cards').innerHTML = '';
+            document.getElementById('stats-cards').classList.add('hidden');
+            document.getElementById('charts-area').classList.add('hidden');
+            document.getElementById('ai-report-output').innerText = '';
+        }
     }
 
     document.getElementById('pain-report-form').addEventListener('submit', async (e) => {
@@ -487,12 +526,14 @@ pbpaste > public/index.html<!DOCTYPE html>
         myReports.reverse().forEach(r => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #e2e8f0';
+            // Fixed: Pass full object safely
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
             tr.innerHTML = `
                 <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
                 <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
                 <td style="padding:12px; font-size:0.9rem;">${r.medName} @ ${r.medTime}</td>
                 <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
-                <td style="padding:12px;"><button onclick='openResponseModal(${JSON.stringify(r).replace(/'/g, "&#39;")})' class="btn btn-sm btn-primary">Respond</button></td>
+                <td style="padding:12px;"><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button></td>
             `;
             tbody.appendChild(tr);
         });
@@ -508,7 +549,8 @@ pbpaste > public/index.html<!DOCTYPE html>
         myRefs.forEach(r => {
             const div = document.createElement('div');
             div.className = 'card'; div.style.padding = '15px';
-            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel}</p><p><strong>Reason:</strong> ${r.notes}</p><button onclick='openResponseModal(${JSON.stringify(r).replace(/'/g, "&#39;")})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel}</p><p><strong>Reason:</strong> ${r.notes}</p><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
             container.appendChild(div);
         });
     }
@@ -517,17 +559,15 @@ pbpaste > public/index.html<!DOCTYPE html>
 
     window.openResponseModal = function(report) {
         activeReportId = report.id;
-        currentReportData = report; // Store full data
+        currentReportData = report;
         document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
         
-        // Calculate Age
         let age = 'N/A';
         if(report.patientDob) {
             const diff = new Date().getFullYear() - new Date(report.patientDob).getFullYear();
             age = diff;
         }
 
-        // Build Detailed Info HTML
         const infoHtml = `
             <div><strong>Age:</strong> ${age} &nbsp;|&nbsp; <strong>NHS:</strong> ${report.patientNHS}</div>
             <div><strong>Phone:</strong> ${report.patientPhone || 'Not provided'}</div>
@@ -597,14 +637,82 @@ pbpaste > public/index.html<!DOCTYPE html>
 
     window.generateReport = async (period) => {
         const output = document.getElementById('ai-report-output');
+        const statsCards = document.getElementById('stats-cards');
+        const chartsArea = document.getElementById('charts-area');
+        
         output.innerHTML = "Generating AI analysis... please wait.";
+        statsCards.classList.add('hidden');
+        chartsArea.classList.add('hidden');
+        statsCards.innerHTML = '';
+        
         try {
             const res = await fetch('/api/generate-ai-report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ period, role: currentUser.role }) });
             const data = await res.json();
-            if(data.success) output.innerHTML = data.report;
-            else output.innerHTML = "Error: " + data.message;
+            
+            if(data.success) {
+                output.innerHTML = data.report;
+                
+                // Render Stats & Charts if data exists
+                if(data.stats) {
+                    renderStats(data.stats);
+                    renderCharts(data.stats);
+                    statsCards.classList.remove('hidden');
+                    chartsArea.classList.remove('hidden');
+                }
+            } else {
+                output.innerHTML = "Error: " + data.message;
+            }
         } catch(err) { output.innerHTML = "Error connecting to AI service."; }
     };
+
+    function renderStats(stats) {
+        const container = document.getElementById('stats-cards');
+        container.innerHTML = `
+            <div class="stat-card"><div class="stat-value">${stats.totalPatients}</div><div class="stat-label">Patients Treated</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.totalReports}</div><div class="stat-label">Total Reports</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.avgPain}</div><div class="stat-label">Avg Pain Level</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.referrals}</div><div class="stat-label">Referrals Made</div></div>
+        `;
+    }
+
+    function renderCharts(stats) {
+        // Pain Distribution Chart
+        const ctxPain = document.getElementById('painChart').getContext('2d');
+        if(painChartInstance) painChartInstance.destroy();
+        
+        painChartInstance = new Chart(ctxPain, {
+            type: 'bar',
+            data: {
+                labels: ['0-3 (Mild)', '4-6 (Mod)', '7-10 (Severe)'],
+                datasets: [{
+                    label: 'Pain Level Distribution',
+                    data: [stats.painMild, stats.painMod, stats.painSevere],
+                    backgroundColor: ['#10b981', '#f59e0b', '#f43f5e']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+
+        // Meds Chart
+        const ctxMed = document.getElementById('medChart').getContext('2d');
+        if(medChartInstance) medChartInstance.destroy();
+
+        const medLabels = Object.keys(stats.topMeds);
+        const medData = Object.values(stats.topMeds);
+
+        medChartInstance = new Chart(ctxMed, {
+            type: 'doughnut',
+            data: {
+                labels: medLabels,
+                datasets: [{
+                    label: 'Medication Usage',
+                    data: medData,
+                    backgroundColor: ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
 
     window.downloadReport = function() {
         const text = document.getElementById('ai-report-output').innerText;
@@ -626,4 +734,5 @@ pbpaste > public/index.html<!DOCTYPE html>
     }
 </script>
 </body>
-</html>pbpaste > public/index.html
+</html>
+
