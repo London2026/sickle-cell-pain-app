@@ -1,3 +1,4 @@
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -128,7 +129,7 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Get All Reports
+// Get All Reports (For Nurse Dashboard)
 app.get('/api/all-reports', async (req, res) => {
   try {
     const reports = await Report.find().sort({ timestamp: -1 });
@@ -136,16 +137,29 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response
+// Send Response (FIXED: Ensures response saves and emits event)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
-    await Report.findByIdAndUpdate(reportId, {
-      status: 'responded', response: message, responderName: nurseName, referralType
-    });
+    
+    // Update the report with response details
+    const updateData = {
+      status: 'responded',
+      response: message,
+      responderName: nurseName
+    };
+    if (referralType) updateData.referralType = referralType;
+
+    await Report.findByIdAndUpdate(reportId, updateData);
+    
+    // Emit event to notify patients and refresh dashboards
     io.emit('report-updated');
+    
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Error sending response:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Chat: Send Message
@@ -161,13 +175,12 @@ app.post('/api/send-message', async (req, res) => {
 // Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    // Return all messages for global chat demo
     const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
     res.json(messages);
   } catch (err) { res.status(500).json([]); }
 });
 
-// AI: Generate Report WITH STATS FOR GRAPHS
+// AI: Generate Report
 app.post('/api/generate-ai-report', async (req, res) => {
   try {
     const { period } = req.body;
@@ -179,80 +192,41 @@ app.post('/api/generate-ai-report', async (req, res) => {
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
     
-    if (reports.length === 0) {
-      return res.json({ 
-        success: true, 
-        report: "No data available for this period.",
-        stats: null 
-      });
-    }
-
-    // 1. Calculate Statistics for Graphs
+    // Calculate stats for charts
     const totalPatients = new Set(reports.map(r => r.patientId)).size;
     const totalReports = reports.length;
-    const avgPain = (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / totalReports).toFixed(1);
+    const avgPain = totalReports ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel||0), 0) / totalReports).toFixed(1) : 0;
     const referrals = reports.filter(r => r.referralType).length;
 
     // Pain Distribution
-    let painMild = 0, painMod = 0, painSevere = 0;
-    reports.forEach(r => {
-      const lvl = parseInt(r.painLevel);
-      if (lvl <= 3) painMild++;
-      else if (lvl <= 6) painMod++;
-      else painSevere++;
-    });
+    const painMild = reports.filter(r => r.painLevel <= 3).length;
+    const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
+    const painSevere = reports.filter(r => r.painLevel > 6).length;
 
     // Top Meds
     const medCounts = {};
-    reports.forEach(r => {
-      if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1;
-    });
-    // Sort and take top 5
-    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
-    const topMeds = {};
-    sortedMeds.forEach(([name, count]) => topMeds[name] = count);
+    reports.forEach(r => { if(r.medName) medCounts[r.medName] = (medCounts[r.medName]||0)+1; });
+    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1]-a[1]).slice(0, 5);
+    const topMeds = Object.fromEntries(sortedMeds);
 
-    const statsObject = {
-      totalPatients, totalReports, avgPain, referrals,
-      painMild, painMod, painSevere,
-      topMeds
-    };
+    const stats = { totalPatients, totalReports, avgPain, referrals, painMild, painMod, painSevere, topMeds };
 
-    // 2. Generate AI Text Summary
-    const dataSummary = {
-      totalPatientsTreated: totalPatients,
-      totalReports: totalReports,
-      avgPainLevel: avgPain,
-      commonMeds: topMeds,
-      referrals: referrals,
-      painDistribution: { mild: painMild, moderate: painMod, severe: painSevere }
-    };
-
-    let aiText = "";
-    try {
-      const completion = await openai.chat.completions.create({
+    let aiText = "No data available for this period.";
+    if (totalReports > 0) {
+        const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
-          { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide a short 3-sentence summary of trends.` }
+            { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
+            { role: "user", content: `Period: ${period}. Total Reports: ${totalReports}, Avg Pain: ${avgPain}, Top Meds: ${JSON.stringify(topMeds)}. Provide a 3-sentence summary.` }
         ]
-      });
-      aiText = completion.choices[0].message.content;
-    } catch (aiErr) {
-      aiText = "AI Text generation failed, but charts are displayed below based on raw data.";
-      console.error("AI Text Error:", aiErr);
+        });
+        aiText = completion.choices[0].message.content;
     }
 
-    // 3. Send BOTH text and stats
-    res.json({ 
-      success: true, 
-      report: aiText,
-      stats: statsObject 
-    });
-
+    res.json({ success: true, report: aiText, stats: stats });
   } catch (error) {
-    console.error("Report Error:", error);
-    res.status(500).json({ success: false, message: "Server error generating report." });
+    console.error("AI Error:", error);
+    res.json({ success: false, message: "AI Service Unavailable." });
   }
 });
 
