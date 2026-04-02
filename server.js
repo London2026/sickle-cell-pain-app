@@ -24,7 +24,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- MONGODB CONNECTION ---
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err.message));
+  .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // --- DATABASE SCHEMAS ---
 const userSchema = new mongoose.Schema({
@@ -74,13 +74,9 @@ app.post('/api/register', async (req, res) => {
     const { role, email, password, name, ...details } = req.body;
     const existing = await User.findOne({ email });
     if (existing) return res.json({ success: false, message: 'Email already registered' });
-
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
-  } catch (err) { 
-    console.error("Register Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Login
@@ -140,35 +136,16 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED)
+// Send Response
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
-    
-    if (!reportId) return res.status(400).json({ success: false, message: 'Missing Report ID' });
-
-    const updatedReport = await Report.findByIdAndUpdate(
-      reportId, 
-      { 
-        status: 'responded', 
-        response: message, 
-        responderName: nurseName, 
-        referralType: referralType || null 
-      },
-      { new: true } // Return the updated document
-    );
-
-    if (!updatedReport) {
-      return res.status(404).json({ success: false, message: 'Report not found' });
-    }
-
-    console.log(`✅ Response saved for Report ${reportId}`);
+    await Report.findByIdAndUpdate(reportId, {
+      status: 'responded', response: message, responderName: nurseName, referralType
+    });
     io.emit('report-updated');
     res.json({ success: true });
-  } catch (err) { 
-    console.error("Response Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Chat: Send Message
@@ -184,12 +161,13 @@ app.post('/api/send-message', async (req, res) => {
 // Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+    // Return all messages for global chat demo
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
     res.json(messages);
   } catch (err) { res.status(500).json([]); }
 });
 
-// AI: Generate Report with Data for Charts
+// AI: Generate Report WITH STATS FOR GRAPHS
 app.post('/api/generate-ai-report', async (req, res) => {
   try {
     const { period } = req.body;
@@ -205,61 +183,76 @@ app.post('/api/generate-ai-report', async (req, res) => {
       return res.json({ 
         success: true, 
         report: "No data available for this period.",
-        chartData: null 
+        stats: null 
       });
     }
 
-    // Prepare Data for Charts
-    const painLevels = reports.map(r => parseInt(r.painLevel));
-    const avgPain = (painLevels.reduce((a, b) => a + b, 0) / painLevels.length).toFixed(1);
-    
-    // Count pain levels for bar chart
-    const painDistribution = Array(11).fill(0);
-    painLevels.forEach(l => painDistribution[l]++);
+    // 1. Calculate Statistics for Graphs
+    const totalPatients = new Set(reports.map(r => r.patientId)).size;
+    const totalReports = reports.length;
+    const avgPain = (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / totalReports).toFixed(1);
+    const referrals = reports.filter(r => r.referralType).length;
 
-    // Count medications
-    const medCounts = {};
+    // Pain Distribution
+    let painMild = 0, painMod = 0, painSevere = 0;
     reports.forEach(r => {
-      const med = r.medName || 'Unknown';
-      medCounts[med] = (medCounts[med] || 0) + 1;
+      const lvl = parseInt(r.painLevel);
+      if (lvl <= 3) painMild++;
+      else if (lvl <= 6) painMod++;
+      else painSevere++;
     });
 
-    const dataSummary = {
-      totalPatients: new Set(reports.map(r => r.patientId)).size,
-      totalReports: reports.length,
-      avgPain: avgPain,
-      referrals: reports.filter(r => r.referralType).length
+    // Top Meds
+    const medCounts = {};
+    reports.forEach(r => {
+      if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1;
+    });
+    // Sort and take top 5
+    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const topMeds = {};
+    sortedMeds.forEach(([name, count]) => topMeds[name] = count);
+
+    const statsObject = {
+      totalPatients, totalReports, avgPain, referrals,
+      painMild, painMod, painSevere,
+      topMeds
     };
 
-    // Get AI Text Analysis
-    let aiText = "Analyzing data...";
+    // 2. Generate AI Text Summary
+    const dataSummary = {
+      totalPatientsTreated: totalPatients,
+      totalReports: totalReports,
+      avgPainLevel: avgPain,
+      commonMeds: topMeds,
+      referrals: referrals,
+      painDistribution: { mild: painMild, moderate: painMod, severe: painSevere }
+    };
+
+    let aiText = "";
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: "You are a healthcare analyst. Provide a brief 3-sentence summary of this Sickle Cell data." },
-          { role: "user", content: `Total Reports: ${dataSummary.totalReports}, Avg Pain: ${dataSummary.avgPain}, Referrals: ${dataSummary.referrals}. Summary:` }
+          { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
+          { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide a short 3-sentence summary of trends.` }
         ]
       });
       aiText = completion.choices[0].message.content;
     } catch (aiErr) {
-      aiText = "AI Analysis unavailable, but charts are generated below.";
+      aiText = "AI Text generation failed, but charts are displayed below based on raw data.";
+      console.error("AI Text Error:", aiErr);
     }
 
+    // 3. Send BOTH text and stats
     res.json({ 
       success: true, 
       report: aiText,
-      chartData: {
-        labels: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
-        painData: painDistribution,
-        medLabels: Object.keys(medCounts),
-        medData: Object.values(medCounts),
-        stats: dataSummary
-      }
+      stats: statsObject 
     });
+
   } catch (error) {
-    console.error("AI Error:", error);
-    res.status(500).json({ success: false, message: "Server Error" });
+    console.error("Report Error:", error);
+    res.status(500).json({ success: false, message: "Server error generating report." });
   }
 });
 
