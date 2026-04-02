@@ -56,7 +56,7 @@ async function seedData() {
   const count = await User.countDocuments();
   if (count === 0) {
     const demoUsers = [
-      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen' },
+      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07700900000' },
       { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
       { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
       { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
@@ -74,6 +74,7 @@ app.post('/api/register', async (req, res) => {
     const { role, email, password, name, ...details } = req.body;
     const existing = await User.findOne({ email });
     if (existing) return res.json({ success: false, message: 'Email already registered' });
+
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
@@ -115,7 +116,7 @@ app.post('/api/submit-report', async (req, res) => {
       painLevel, medName, medTime, notes
     });
 
-    io.emit('report-updated'); // Notify all clients
+    io.emit('report-updated'); // Notify all nurses
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -128,48 +129,52 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Get All Reports (FIXED: Returns ALL reports for Pain Nurses)
+// Get All Reports (FIXED: Nurses see ALL reports)
 app.get('/api/all-reports', async (req, res) => {
   try {
-    // Simply return all reports sorted by newest. Frontend will filter if needed.
+    // Return ALL reports sorted by newest first. Frontend will filter if needed.
     const reports = await Report.find().sort({ timestamp: -1 });
     res.json(reports);
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Ensures response saves correctly)
+// Send Response (FIXED: Correctly updates report)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    const updateData = {
-      status: 'responded',
-      response: message,
-      responderName: nurseName
-    };
-    if (referralType) updateData.referralType = referralType;
+    const updatedReport = await Report.findByIdAndUpdate(
+      reportId, 
+      { 
+        status: 'responded', 
+        response: message, 
+        responderName: nurseName, 
+        referralType: referralType || null 
+      },
+      { new: true }
+    );
 
-    await Report.findByIdAndUpdate(reportId, updateData);
-    
-    io.emit('report-updated'); // Notify all clients immediately
+    if (!updatedReport) return res.status(404).json({ success: false, message: 'Report not found' });
+
+    io.emit('report-updated'); // Notify patient and nurses
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Chat: Send Message
+// Chat: Send Message (FIXED: Global chat for demo)
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
-    await Message.create({ senderId, senderName, receiverId, message, role });
-    io.emit('new-message');
+    const newMsg = await Message.create({ senderId, senderName, receiverId, message, role });
+    io.emit('new-message', newMsg); // Broadcast to everyone
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Chat: Get Messages (FIXED: Returns last 50 messages for EVERYONE)
+// Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
     res.json(messages);
   } catch (err) { res.status(500).json([]); }
 });
@@ -186,32 +191,42 @@ app.post('/api/generate-ai-report', async (req, res) => {
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
     
+    if (reports.length === 0) {
+      return res.json({ 
+        success: true, 
+        report: "No data available for this period.",
+        stats: { totalPatients: 0, totalReports: 0, avgPain: 0, referrals: 0, painMild: 0, painMod: 0, painSevere: 0, topMeds: {} }
+      });
+    }
+
     // Calculate Stats
-    const totalReports = reports.length;
-    const totalPatients = new Set(reports.map(r => r.patientId)).size;
-    const avgPain = totalReports ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / totalReports).toFixed(1) : 0;
-    const referrals = reports.filter(r => r.referralType).length;
-    
     const painMild = reports.filter(r => r.painLevel <= 3).length;
     const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
     const painSevere = reports.filter(r => r.painLevel > 6).length;
-
+    
     const medCounts = {};
     reports.forEach(r => { if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1; });
     const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
     const topMeds = Object.fromEntries(sortedMeds);
 
-    const dataSummary = { totalPatients, totalReports, avgPain, referrals, painMild, painMod, painSevere, topMeds };
+    const stats = {
+      totalPatients: new Set(reports.map(r => r.patientId)).size,
+      totalReports: reports.length,
+      avgPain: (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / reports.length).toFixed(1),
+      referrals: reports.filter(r => r.referralType).length,
+      painMild, painMod, painSevere,
+      topMeds
+    };
 
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
-        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
+        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide a 3-sentence summary.` }
       ]
     });
 
-    res.json({ success: true, report: completion.choices[0].message.content, stats: dataSummary });
+    res.json({ success: true, report: completion.choices[0].message.content, stats });
   } catch (error) {
     console.error("AI Error:", error);
     res.json({ success: false, message: "AI Service Unavailable." });
@@ -220,7 +235,9 @@ app.post('/api/generate-ai-report', async (req, res) => {
 
 // --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+  cors: { origin: "*" }
+});
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
