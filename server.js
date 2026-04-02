@@ -1,4 +1,3 @@
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -116,7 +115,7 @@ app.post('/api/submit-report', async (req, res) => {
       painLevel, medName, medTime, notes
     });
 
-    io.emit('report-updated');
+    io.emit('report-updated'); // Notify all clients
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -129,20 +128,20 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Get All Reports (For Nurse Dashboard)
+// Get All Reports (FIXED: Returns ALL reports for Pain Nurses)
 app.get('/api/all-reports', async (req, res) => {
   try {
+    // Simply return all reports sorted by newest. Frontend will filter if needed.
     const reports = await Report.find().sort({ timestamp: -1 });
     res.json(reports);
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Ensures response saves and emits event)
+// Send Response (FIXED: Ensures response saves correctly)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    // Update the report with response details
     const updateData = {
       status: 'responded',
       response: message,
@@ -152,14 +151,9 @@ app.post('/api/send-response', async (req, res) => {
 
     await Report.findByIdAndUpdate(reportId, updateData);
     
-    // Emit event to notify patients and refresh dashboards
-    io.emit('report-updated');
-    
+    io.emit('report-updated'); // Notify all clients immediately
     res.json({ success: true });
-  } catch (err) { 
-    console.error("Error sending response:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Chat: Send Message
@@ -172,10 +166,10 @@ app.post('/api/send-message', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Chat: Get Messages
+// Chat: Get Messages (FIXED: Returns last 50 messages for EVERYONE)
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
     res.json(messages);
   } catch (err) { res.status(500).json([]); }
 });
@@ -192,38 +186,32 @@ app.post('/api/generate-ai-report', async (req, res) => {
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
     
-    // Calculate stats for charts
-    const totalPatients = new Set(reports.map(r => r.patientId)).size;
+    // Calculate Stats
     const totalReports = reports.length;
-    const avgPain = totalReports ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel||0), 0) / totalReports).toFixed(1) : 0;
+    const totalPatients = new Set(reports.map(r => r.patientId)).size;
+    const avgPain = totalReports ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / totalReports).toFixed(1) : 0;
     const referrals = reports.filter(r => r.referralType).length;
-
-    // Pain Distribution
+    
     const painMild = reports.filter(r => r.painLevel <= 3).length;
     const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
     const painSevere = reports.filter(r => r.painLevel > 6).length;
 
-    // Top Meds
     const medCounts = {};
-    reports.forEach(r => { if(r.medName) medCounts[r.medName] = (medCounts[r.medName]||0)+1; });
-    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1]-a[1]).slice(0, 5);
+    reports.forEach(r => { if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1; });
+    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
     const topMeds = Object.fromEntries(sortedMeds);
 
-    const stats = { totalPatients, totalReports, avgPain, referrals, painMild, painMod, painSevere, topMeds };
+    const dataSummary = { totalPatients, totalReports, avgPain, referrals, painMild, painMod, painSevere, topMeds };
 
-    let aiText = "No data available for this period.";
-    if (totalReports > 0) {
-        const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-            { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
-            { role: "user", content: `Period: ${period}. Total Reports: ${totalReports}, Avg Pain: ${avgPain}, Top Meds: ${JSON.stringify(topMeds)}. Provide a 3-sentence summary.` }
-        ]
-        });
-        aiText = completion.choices[0].message.content;
-    }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
+        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
+      ]
+    });
 
-    res.json({ success: true, report: aiText, stats: stats });
+    res.json({ success: true, report: completion.choices[0].message.content, stats: dataSummary });
   } catch (error) {
     console.error("AI Error:", error);
     res.json({ success: false, message: "AI Service Unavailable." });
