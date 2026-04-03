@@ -56,7 +56,7 @@ async function seedData() {
   const count = await User.countDocuments();
   if (count === 0) {
     const demoUsers = [
-      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07700900000' },
+      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen' },
       { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
       { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
       { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
@@ -116,7 +116,7 @@ app.post('/api/submit-report', async (req, res) => {
       painLevel, medName, medTime, notes
     });
 
-    io.emit('report-updated'); // Notify all nurses
+    io.emit('report-updated');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -129,20 +129,20 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Get All Reports (FIXED: Nurses see ALL reports)
+// Get All Reports
 app.get('/api/all-reports', async (req, res) => {
   try {
-    // Return ALL reports sorted by newest first. Frontend will filter if needed.
     const reports = await Report.find().sort({ timestamp: -1 });
     res.json(reports);
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Correctly updates report)
+// Send Response (FIXED: Ensures DB update and Socket emit)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
+    // 1. Update the report in MongoDB
     const updatedReport = await Report.findByIdAndUpdate(
       reportId, 
       { 
@@ -151,22 +151,29 @@ app.post('/api/send-response', async (req, res) => {
         responderName: nurseName, 
         referralType: referralType || null 
       },
-      { new: true }
+      { new: true } // Return the updated document
     );
 
-    if (!updatedReport) return res.status(404).json({ success: false, message: 'Report not found' });
+    if (!updatedReport) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
 
-    io.emit('report-updated'); // Notify patient and nurses
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+    // 2. Emit event to ALL clients so Patient sees it immediately
+    io.emit('report-updated');
+    
+    res.json({ success: true, report: updatedReport });
+  } catch (err) { 
+    console.error("Error sending response:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
-// Chat: Send Message (FIXED: Global chat for demo)
+// Chat: Send Message
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
     const newMsg = await Message.create({ senderId, senderName, receiverId, message, role });
-    io.emit('new-message', newMsg); // Broadcast to everyone
+    io.emit('new-message', newMsg);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -174,7 +181,7 @@ app.post('/api/send-message', async (req, res) => {
 // Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
     res.json(messages);
   } catch (err) { res.status(500).json([]); }
 });
@@ -190,14 +197,7 @@ app.post('/api/generate-ai-report', async (req, res) => {
     if (period === 'yearly') cutoff.setFullYear(now.getFullYear() - 1);
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
-    
-    if (reports.length === 0) {
-      return res.json({ 
-        success: true, 
-        report: "No data available for this period.",
-        stats: { totalPatients: 0, totalReports: 0, avgPain: 0, referrals: 0, painMild: 0, painMod: 0, painSevere: 0, topMeds: {} }
-      });
-    }
+    if (reports.length === 0) return res.json({ success: true, report: "No data available.", stats: null });
 
     // Calculate Stats
     const painMild = reports.filter(r => r.painLevel <= 3).length;
@@ -221,12 +221,12 @@ app.post('/api/generate-ai-report', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data briefly." },
-        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide a 3-sentence summary.` }
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
+        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
       ]
     });
 
-    res.json({ success: true, report: completion.choices[0].message.content, stats });
+    res.json({ success: true, report: completion.choices[0].message.content, stats: stats });
   } catch (error) {
     console.error("AI Error:", error);
     res.json({ success: false, message: "AI Service Unavailable." });
@@ -235,9 +235,7 @@ app.post('/api/generate-ai-report', async (req, res) => {
 
 // --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: { origin: "*" }
-});
+const io = socketIo(server);
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
