@@ -114,7 +114,7 @@
                     <div class="form-group"><label>GP Practice Name</label><input type="text" id="reg-gp"></div>
                     <div class="form-group"><label>GP Phone</label><input type="tel" id="reg-gp-phone"></div>
                     <div class="form-group"><label>Address & Postcode</label><textarea id="reg-address" rows="2"></textarea></div>
-                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2"></textarea></div>
+                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2" placeholder="Sickle cell type, complications..."></textarea></div>
                     <div class="form-group"><label>Regular Medications</label><textarea id="reg-regular-meds" rows="2"></textarea></div>
                     <div class="form-group"><label>Prescribed Pain Meds</label><input type="text" id="reg-pain-meds"></div>
                 </div>
@@ -174,7 +174,11 @@
                             <button type="submit" class="btn btn-primary">Send Alert to Care Team</button>
                         </form>
                     </div>
-                    <div class="card"><h3>My Recent Alerts</h3><div id="patient-alerts-list"></div></div>
+                    <!-- FIXED: This list will now populate correctly -->
+                    <div class="card">
+                        <h3>My Recent Alerts</h3>
+                        <div id="patient-alerts-list">Loading...</div>
+                    </div>
                 </div>
 
                 <!-- PATIENT: Chat -->
@@ -296,19 +300,34 @@
     let currentUser = null;
     let currentRole = 'patient';
     let selectedTreatments = [];
-    let activeReportId = null; // Stores the ID directly
+    let activeReportId = null;
     let painChartInstance = null;
     let medChartInstance = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         initNPRSScale();
         checkSession();
+        
+        // Initialize Socket
         socket = io();
-        socket.on('connect', () => console.log('Connected'));
-        socket.on('new-message', () => { if(currentUser) loadChat(); });
+        
+        // FIXED: Robust Socket Listeners
+        socket.on('connect', () => console.log('✅ Connected to server'));
+        
+        socket.on('new-message', () => { 
+            if(currentUser) loadChat(); 
+        });
+        
         socket.on('report-updated', () => {
-            if(currentUser?.role === 'patient') loadPatientAlerts();
-            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) loadDashboard();
+            console.log('⚡ Report Update Received');
+            if(currentUser?.role === 'patient') {
+                console.log('Refreshing patient alerts...');
+                loadPatientAlerts();
+            }
+            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) {
+                console.log('Refreshing nurse dashboard...');
+                loadDashboard();
+            }
         });
     });
 
@@ -358,33 +377,21 @@
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
         const role = document.getElementById('login-role').value;
-        
         const alertBox = document.getElementById('alert-box');
         alertBox.style.display = 'none';
 
         try {
-            const res = await fetch('/api/login', { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ email, password, role }) 
-            });
-            
+            const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email, password, role }) });
             const data = await res.json();
-            
             if (data.success) { 
                 currentUser = data.user; 
                 localStorage.setItem('user', JSON.stringify(currentUser)); 
-                showAlert('Login successful! Redirecting...', 'success');
-                setTimeout(() => {
-                    initDashboard();
-                }, 500);
+                showAlert('Login successful!', 'success');
+                setTimeout(() => initDashboard(), 500);
             } else { 
                 showAlert(data.message || 'Invalid credentials', 'error'); 
             }
-        } catch(err) { 
-            console.error(err);
-            showAlert('Connection error. Please try again.', 'error'); 
-        }
+        } catch(err) { showAlert('Connection error.', 'error'); }
     });
 
     document.getElementById('register-form').addEventListener('submit', async (e) => {
@@ -432,11 +439,11 @@
             document.getElementById('patient-nav').classList.remove('hidden');
             showPage('p-home');
             loadPatientProfile();
-            loadPatientAlerts();
+            loadPatientAlerts(); // Force load on init
         } else if (['pain-nurse', 'community-nurse'].includes(currentUser.role)) {
             document.getElementById('nurse-nav').classList.remove('hidden');
             showPage('n-dashboard');
-            loadDashboard();
+            loadDashboard(); // Force load on init
             const isPainNurse = currentUser.role === 'pain-nurse';
             document.getElementById('btn-refer-community').style.display = isPainNurse ? 'block' : 'none';
             document.getElementById('btn-refer-doctor').style.display = isPainNurse ? 'block' : 'none';
@@ -456,6 +463,7 @@
         if(pageId === 'p-chat' || pageId === 'n-chat' || pageId === 'd-chat') loadChat();
         if(pageId === 'n-dashboard') loadDashboard();
         if(pageId === 'd-dashboard') loadDoctorDashboard();
+        if(pageId === 'p-home') loadPatientAlerts(); // Refresh alerts when returning home
         if(pageId === 'n-reports') {
             if(painChartInstance) painChartInstance.destroy();
             if(medChartInstance) medChartInstance.destroy();
@@ -474,22 +482,62 @@
         try {
             const res = await fetch('/api/submit-report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
             const result = await res.json();
-            if(result.success) { showAlert('Pain report sent to care team!', 'success'); e.target.reset(); document.querySelectorAll('.nprs-btn').forEach(b => b.classList.remove('selected')); document.getElementById('pain-level-text').innerText = ''; loadPatientAlerts(); }
-        } catch(err) { showAlert('Failed to send report', 'error'); }
+            if(result.success) { 
+                showAlert('Pain report sent!', 'success'); 
+                e.target.reset(); 
+                document.querySelectorAll('.nprs-btn').forEach(b => b.classList.remove('selected')); 
+                document.getElementById('pain-level-text').innerText = ''; 
+                loadPatientAlerts(); 
+            }
+        } catch(err) { showAlert('Failed to send', 'error'); }
     });
 
+    // FIXED: Robust Patient Alerts Loading
     async function loadPatientAlerts() {
-        const res = await fetch(`/api/patient-reports/${currentUser.id}`);
-        const reports = await res.json();
+        if(!currentUser || !currentUser.id) return;
+        
         const container = document.getElementById('patient-alerts-list');
-        container.innerHTML = reports.length ? '' : '<p>No reports yet.</p>';
-        reports.reverse().forEach(r => {
-            const div = document.createElement('div');
-            div.style.borderBottom = '1px solid #eee'; div.style.padding = '10px 0';
-            let statusColor = r.status === 'pending' ? 'orange' : 'green';
-            div.innerHTML = `<div style="display:flex; justify-content:space-between;"><strong>Pain Level: ${r.painLevel}</strong><span style="color:${statusColor}; font-size:0.8rem">${r.status.toUpperCase()}</span></div><div style="font-size:0.9rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>${r.response ? `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse:</strong> ${r.response}</div>` : ''}`;
-            container.appendChild(div);
-        });
+        container.innerHTML = '<p>Loading alerts...</p>';
+
+        try {
+            const res = await fetch(`/api/patient-reports/${currentUser.id}`);
+            if (!res.ok) throw new Error('Network response was not ok');
+            const reports = await res.json();
+            
+            if (!reports || reports.length === 0) {
+                container.innerHTML = '<p>No reports submitted yet.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            reports.reverse().forEach(r => {
+                const div = document.createElement('div');
+                div.style.borderBottom = '1px solid #eee'; 
+                div.style.padding = '10px 0';
+                let statusColor = r.status === 'pending' ? 'orange' : 'green';
+                
+                let responseHtml = '';
+                if(r.response) {
+                    responseHtml = `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem; border-left: 3px solid var(--primary);"><strong>Response from ${r.responderName || 'Nurse'}:</strong><br>${r.response.replace(/\n/g, '<br>')}</div>`;
+                } else {
+                    responseHtml = '<div style="font-size:0.8rem; color:#999; margin-top:5px;">Waiting for response...</div>';
+                }
+
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong>Pain Level: ${r.painLevel}</strong>
+                        <span class="badge" style="background:${statusColor}; color:white;">${r.status.toUpperCase()}</span>
+                    </div>
+                    <div style="font-size:0.85rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>
+                    <div style="font-size:0.9rem; margin-top:4px;"><em>Last Med:</em> ${r.medName} at ${r.medTime}</div>
+                    ${responseHtml}
+                `;
+                container.appendChild(div);
+            });
+        } catch (err) {
+            console.error("Error loading alerts:", err);
+            container.innerHTML = '<p>Error loading alerts. Please refresh.</p>';
+        }
     }
 
     function loadPatientProfile() {
@@ -519,25 +567,28 @@
         });
 
         if(myReports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No patient reports found. Ask a patient to submit one!</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No patient reports found.</td></tr>';
             return;
         }
 
         myReports.reverse().forEach(r => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #e2e8f0';
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
             
-            // FIXED: Use data attribute to store ID safely instead of parsing JSON in onclick
-            const isResponded = r.status === 'responded';
-            const actionBtn = isResponded 
-                ? `<span style="color:green; font-weight:bold;">✔ Responded</span>`
-                : `<button class="btn btn-sm btn-primary" onclick="openResponseModal('${r._id}')">Respond</button>`;
+            // Button logic: Hide if responded
+            let actionBtn = '';
+            if(r.status === 'pending') {
+                actionBtn = `<button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button>`;
+            } else {
+                actionBtn = `<span class="badge" style="background:green; color:white;">Responded</span>`;
+            }
 
             tr.innerHTML = `
                 <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
                 <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
                 <td style="padding:12px; font-size:0.9rem;">${r.medName} @ ${r.medTime}</td>
-                <td style="padding:12px;"><span class="badge ${isResponded ? 'badge-nurse' : 'badge-patient'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
+                <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
                 <td style="padding:12px;">${actionBtn}</td>
             `;
             tbody.appendChild(tr);
@@ -554,53 +605,38 @@
         myRefs.forEach(r => {
             const div = document.createElement('div');
             div.className = 'card'; div.style.padding = '15px';
-            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel}</p><p><strong>Reason:</strong> ${r.notes}</p><button class="btn btn-sm btn-primary" onclick="openResponseModal('${r._id}')">Consult & Reply</button>`;
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel}</p><p><strong>Reason:</strong> ${r.notes}</p><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
             container.appendChild(div);
         });
     }
 
     function getPainColor(lvl) { return lvl <= 3 ? 'green' : (lvl <= 6 ? 'orange' : 'red'); }
 
-    // FIXED: Accept ID directly as string
-    window.openResponseModal = function(reportId) {
-        if(!reportId) {
-            alert("Error: Report ID is missing.");
-            return;
+    window.openResponseModal = function(report) {
+        activeReportId = report._id || report.id; // Handle both ID types
+        if(!activeReportId) { alert("Error: Report ID missing"); return; }
+        
+        document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
+        
+        let age = 'N/A';
+        if(report.patientDob) {
+            const diff = new Date().getFullYear() - new Date(report.patientDob).getFullYear();
+            age = diff;
         }
-        activeReportId = reportId;
-        console.log("Opening modal for Report ID:", activeReportId);
-        
-        // Since we don't have full details in the table row anymore, we fetch them or use generic text
-        // For simplicity in this fix, we'll just show the ID and let the nurse know who they are replying to
-        // In a full app, you'd pass the whole object via a global variable or fetch details here.
-        // Let's assume the user knows who they clicked, or we can fetch details:
-        
-        document.getElementById('modal-patient-name').innerText = `Responding to Report #${reportId.slice(-6)}`;
-        document.getElementById('modal-patient-details').innerHTML = `<div class="full-width">Loading patient details...</div>`;
-        
-        // Optional: Fetch full details to populate modal
-        fetch('/api/all-reports')
-            .then(res => res.json())
-            .then(reports => {
-                const r = reports.find(rep => rep._id === reportId);
-                if(r) {
-                    let age = 'N/A';
-                    if(r.patientDob) age = new Date().getFullYear() - new Date(r.patientDob).getFullYear();
-                    
-                    const infoHtml = `
-                        <div><strong>Age:</strong> ${age} &nbsp;|&nbsp; <strong>NHS:</strong> ${r.patientNHS}</div>
-                        <div><strong>Phone:</strong> ${r.patientPhone || 'Not provided'}</div>
-                        <div class="full-width"><strong>Address:</strong> ${r.patientAddress || 'Not provided'}</div>
-                        <div class="full-width"><strong>GP Practice:</strong> ${r.patientGP || 'N/A'}</div>
-                        <div class="full-width"><strong>Medical History:</strong> ${r.medHistory || 'None'}</div>
-                        <div class="full-width"><strong>Regular Meds:</strong> ${r.patientRegularMeds || 'None'}</div>
-                        <div class="full-width"><strong>Pain Meds:</strong> ${r.patientPainMeds || 'None'}</div>
-                        <div class="full-width" style="background:#fff; padding:5px; border:1px solid #ddd; margin-top:5px;"><strong>Current Alert:</strong> Pain Level ${r.painLevel} | Last Med: ${r.medName} at ${r.medTime}</div>
-                    `;
-                    document.getElementById('modal-patient-details').innerHTML = infoHtml;
-                }
-            });
 
+        const infoHtml = `
+            <div><strong>Age:</strong> ${age} &nbsp;|&nbsp; <strong>NHS:</strong> ${report.patientNHS}</div>
+            <div><strong>Phone:</strong> ${report.patientPhone || 'Not provided'}</div>
+            <div class="full-width"><strong>Address:</strong> ${report.patientAddress || 'Not provided'}</div>
+            <div class="full-width"><strong>GP Practice:</strong> ${report.patientGP || 'N/A'} ${report.patientGpPhone ? `(<a href="tel:${report.patientGpPhone}">${report.patientGpPhone}</a>)` : ''}</div>
+            <div class="full-width"><strong>Medical History:</strong> ${report.medHistory || 'None'}</div>
+            <div class="full-width"><strong>Regular Meds:</strong> ${report.patientRegularMeds || 'None'}</div>
+            <div class="full-width"><strong>Pain Meds:</strong> ${report.patientPainMeds || 'None'}</div>
+            <div class="full-width" style="background:#fff; padding:5px; border:1px solid #ddd; margin-top:5px;"><strong>Current Alert:</strong> Pain Level ${report.painLevel} | Last Med: ${report.medName} at ${report.medTime}</div>
+        `;
+        
+        document.getElementById('modal-patient-details').innerHTML = infoHtml;
         document.getElementById('response-modal').classList.remove('hidden');
         document.getElementById('modal-instructions').value = '';
         selectedTreatments = [];
@@ -608,7 +644,6 @@
     };
 
     window.closeModal = function() { document.getElementById('response-modal').classList.add('hidden'); activeReportId = null; };
-    
     window.addTreatment = function(btn, text) {
         btn.classList.toggle('selected');
         if(selectedTreatments.includes(text)) selectedTreatments = selectedTreatments.filter(t => t !== text);
@@ -616,7 +651,7 @@
     };
 
     window.submitResponse = async (type) => {
-        if(!activeReportId) { alert("Error: No report selected."); return; }
+        if(!activeReportId) { alert("Error: No report selected"); return; }
         
         const instructions = document.getElementById('modal-instructions').value;
         let finalMessage = "";
@@ -629,6 +664,7 @@
         } else if (type === 'refer-doctor') {
             finalMessage = `REFERRAL TO DOCTOR: ${instructions || 'Urgent consultation required.'}`;
         }
+        
         try {
             const res = await fetch('/api/send-response', { 
                 method: 'POST', 
@@ -649,10 +685,7 @@
             } else {
                 alert("Error: " + result.message);
             }
-        } catch(err) { 
-            console.error(err);
-            alert('Error sending response'); 
-        }
+        } catch(err) { alert('Error sending response'); }
     };
 
     function handleChatKey(e, type) { if(e.key === 'Enter') sendChat(type); }
