@@ -23,7 +23,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- MONGODB CONNECTION ---
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('✅ MongoDB Connected'))
+  .then(() => {
+      console.log('✅ MongoDB Connected');
+      seedData(); // Ensure data exists on connect
+  })
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // --- DATABASE SCHEMAS ---
@@ -51,18 +54,57 @@ const User = mongoose.model('User', userSchema);
 const Report = mongoose.model('Report', reportSchema);
 const Message = mongoose.model('Message', messageSchema);
 
-// --- SEED DEMO DATA ---
+// --- SEED DEMO DATA (Robust Version) ---
 async function seedData() {
-  const count = await User.countDocuments();
-  if (count === 0) {
-    const demoUsers = [
-      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen' },
-      { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
-      { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
-      { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
-    ];
-    await User.insertMany(demoUsers);
-    console.log('🌱 Demo users seeded.');
+  try {
+    const userCount = await User.countDocuments();
+    if (userCount === 0) {
+      console.log('🌱 Seeding demo users...');
+      const demoUsers = [
+        { 
+          role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', 
+          nhsNumber: '1234567890', gpPractice: 'City Health Center', gpPhone: '0207123456',
+          address: '10 Baker Street, London, NW1 6XE', phone: '07700900123',
+          dob: '1990-05-15',
+          medicalHistory: 'Sickle Cell Anemia (HbSS), History of vaso-occlusive crises', 
+          regularMeds: 'Hydroxyurea 500mg daily, Folic Acid', 
+          painMeds: 'Morphine IR, Ibuprofen, Paracetamol' 
+        },
+        { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management', staffId: 'NURSE001' },
+        { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care', staffId: 'COM001' },
+        { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology', staffId: 'DOC001' }
+      ];
+      await User.insertMany(demoUsers);
+      console.log('✅ Demo users created successfully.');
+      
+      // Create ONE sample pending report for the demo patient so the table isn't empty
+      const patient = await User.findOne({ email: 'patient@demo.com' });
+      if(patient) {
+          await Report.create({
+              patientId: patient._id,
+              patientName: patient.name,
+              patientNHS: patient.nhsNumber,
+              patientGP: patient.gpPractice,
+              patientGpPhone: patient.gpPhone,
+              patientAddress: patient.address,
+              patientPhone: patient.phone,
+              patientDob: patient.dob,
+              patientRegularMeds: patient.regularMeds,
+              patientPainMeds: patient.painMeds,
+              medHistory: patient.medicalHistory,
+              painLevel: '7',
+              medName: 'Paracetamol',
+              medTime: '08:00',
+              notes: 'Severe pain in legs and back.',
+              status: 'pending'
+          });
+          console.log('✅ Sample pain report created for testing.');
+      }
+    } else {
+      console.log('ℹ️ Users already exist, skipping seed.');
+    }
+  } catch (err) {
+    console.error('Error seeding data:', err);
   }
 }
 
@@ -77,10 +119,7 @@ app.post('/api/register', async (req, res) => {
 
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
-  } catch (err) { 
-    console.error("Register Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Login
@@ -94,10 +133,7 @@ app.post('/api/login', async (req, res) => {
     } else {
       res.json({ success: false, message: 'Invalid credentials or role selected' });
     }
-  } catch (err) { 
-    console.error("Login Error:", err);
-    res.status(500).json({ success: false, message: 'Server error' }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
 });
 
 // Submit Pain Report
@@ -123,11 +159,8 @@ app.post('/api/submit-report', async (req, res) => {
     });
 
     io.emit('report-updated');
-    res.json({ success: true, reportId: newReport._id });
-  } catch (err) { 
-    console.error("Submit Report Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Get Patient Reports
@@ -135,53 +168,43 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   try {
     const reports = await Report.find({ patientId: req.params.id }).sort({ timestamp: -1 });
     res.json(reports);
-  } catch (err) { 
-    console.error("Get Patient Reports Error:", err);
-    res.status(500).json([]); 
-  }
+  } catch (err) { res.status(500).json([]); }
 });
 
-// Get All Reports
+// Get All Reports (For Dashboard)
 app.get('/api/all-reports', async (req, res) => {
   try {
     const reports = await Report.find().sort({ timestamp: -1 });
     res.json(reports);
-  } catch (err) { 
-    console.error("Get All Reports Error:", err);
-    res.status(500).json([]); 
-  }
+  } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Properly updates DB and emits event)
+// Send Response / Referral
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    // Update the report in database
+    // Use findByIdAndUpdate with correct options
     const updatedReport = await Report.findByIdAndUpdate(
       reportId,
-      { 
-        status: 'responded', 
-        response: message, 
-        responderName: nurseName, 
-        referralType: referralType || null 
+      {
+        status: 'responded',
+        response: message,
+        responderName: nurseName,
+        referralType: referralType || null
       },
-      { new: true } // Return the updated document
+      { returnDocument: 'after' } // Fixed deprecation warning
     );
 
     if (!updatedReport) {
       return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    console.log(`✅ Report ${reportId} updated successfully.`);
-    
-    // Emit event to notify all clients
     io.emit('report-updated');
-    
-    res.json({ success: true, message: 'Response sent successfully' });
+    res.json({ success: true });
   } catch (err) { 
-    console.error("Send Response Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
+      console.error("Error sending response:", err);
+      res.status(500).json({ success: false, message: err.message }); 
   }
 });
 
@@ -189,24 +212,18 @@ app.post('/api/send-response', async (req, res) => {
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
-    const newMsg = await Message.create({ senderId, senderName, receiverId, message, role });
-    io.emit('new-message', newMsg);
+    await Message.create({ senderId, senderName, receiverId, message, role });
+    io.emit('new-message');
     res.json({ success: true });
-  } catch (err) { 
-    console.error("Send Message Error:", err);
-    res.status(500).json({ success: false, message: err.message }); 
-  }
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 // Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
     res.json(messages);
-  } catch (err) { 
-    console.error("Get Messages Error:", err);
-    res.status(500).json([]); 
-  }
+  } catch (err) { res.status(500).json([]); }
 });
 
 // AI: Generate Report
@@ -222,7 +239,7 @@ app.post('/api/generate-ai-report', async (req, res) => {
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
     if (reports.length === 0) return res.json({ success: true, report: "No data available for this period.", stats: null });
 
-    // Calculate stats
+    // Calculate Stats
     const painMild = reports.filter(r => r.painLevel <= 3).length;
     const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
     const painSevere = reports.filter(r => r.painLevel > 6).length;
@@ -244,23 +261,21 @@ app.post('/api/generate-ai-report', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data professionally." },
-        { role: "user", content: `Period: ${period}. Data Summary: ${JSON.stringify(stats)}. Provide a concise report with: 1. Executive Summary, 2. Pain Level Trends, 3. Medication Usage Analysis, 4. Referral Statistics.` }
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
+        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
       ]
     });
 
     res.json({ success: true, report: completion.choices[0].message.content, stats });
   } catch (error) {
     console.error("AI Error:", error);
-    res.json({ success: false, message: "AI Service Unavailable. Check API Key.", stats: null });
+    res.json({ success: false, message: "AI Service Unavailable. Check API Key." });
   }
 });
 
 // --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: { origin: "*" }
-});
+const io = socketIo(server);
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -270,5 +285,4 @@ io.on('connection', (socket) => {
 // Start Server
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  seedData();
 });
