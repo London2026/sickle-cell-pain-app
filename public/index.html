@@ -312,10 +312,17 @@
         checkSession();
         socket = io();
         socket.on('connect', () => console.log('Connected'));
+        
+        // Real-time updates
         socket.on('new-message', () => { if(currentUser) loadChat(); });
         socket.on('report-updated', () => {
-            if(currentUser?.role === 'patient') loadPatientAlerts();
-            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) loadDashboard();
+            if(currentUser?.role === 'patient') {
+                loadPatientAlerts();
+                showAlert('Your report has been updated by a nurse!', 'success');
+            }
+            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) {
+                loadDashboard();
+            }
         });
     });
 
@@ -444,7 +451,7 @@
         } else if (['pain-nurse', 'community-nurse'].includes(currentUser.role)) {
             document.getElementById('nurse-nav').classList.remove('hidden');
             showPage('n-dashboard');
-            loadDashboard();
+            loadDashboard(); // Loads immediately
             const isPainNurse = currentUser.role === 'pain-nurse';
             document.getElementById('btn-refer-community').style.display = isPainNurse ? 'block' : 'none';
             document.getElementById('btn-refer-doctor').style.display = isPainNurse ? 'block' : 'none';
@@ -486,18 +493,59 @@
         } catch(err) { showAlert('Failed to send report', 'error'); }
     });
 
+    // --- FIXED: Patient Alerts Loading ---
     async function loadPatientAlerts() {
-        const res = await fetch(`/api/patient-reports/${currentUser.id}`);
-        const reports = await res.json();
-        const container = document.getElementById('patient-alerts-list');
-        container.innerHTML = reports.length ? '' : '<p>No reports yet.</p>';
-        reports.reverse().forEach(r => {
-            const div = document.createElement('div');
-            div.style.borderBottom = '1px solid #eee'; div.style.padding = '10px 0';
-            let statusColor = r.status === 'pending' ? 'orange' : 'green';
-            div.innerHTML = `<div style="display:flex; justify-content:space-between;"><strong>Pain Level: ${r.painLevel}</strong><span style="color:${statusColor}; font-size:0.8rem">${r.status.toUpperCase()}</span></div><div style="font-size:0.9rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>${r.response ? `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse:</strong> ${r.response}</div>` : ''}`;
-            container.appendChild(div);
-        });
+        try {
+            const res = await fetch(`/api/patient-reports/${currentUser.id}`);
+            const reports = await res.json();
+            const container = document.getElementById('patient-alerts-list');
+            
+            if (!reports || reports.length === 0) {
+                container.innerHTML = '<p style="color:#666; text-align:center;">No reports submitted yet.</p>';
+                return;
+            }
+
+            container.innerHTML = '';
+            reports.reverse().forEach(r => {
+                const div = document.createElement('div');
+                div.style.borderBottom = '1px solid #eee'; 
+                div.style.padding = '15px 0';
+                
+                let statusColor = r.status === 'pending' ? '#f59e0b' : '#10b981';
+                let statusText = r.status === 'pending' ? 'PENDING REVIEW' : 'RESPONDED';
+                
+                let responseHtml = '';
+                if (r.response) {
+                    responseHtml = `
+                        <div style="background:#f0f9ff; padding:12px; margin-top:10px; border-radius:6px; border-left: 4px solid var(--primary);">
+                            <div style="font-weight:bold; color:var(--primary); margin-bottom:5px;">✅ Response from ${r.responderName || 'Care Team'}:</div>
+                            <div style="white-space: pre-wrap; color:#333;">${r.response}</div>
+                            <div style="font-size:0.75rem; color:#666; margin-top:5px;">Received: ${new Date(r.timestamp).toLocaleString()}</div>
+                        </div>
+                    `;
+                } else {
+                    responseHtml = `<div style="color:#f59e0b; font-size:0.85rem; margin-top:5px;">⏳ Waiting for nurse response...</div>`;
+                }
+
+                div.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <span style="font-size:1.2rem; font-weight:bold; color:${statusColor}">Pain Level: ${r.painLevel}</span>
+                            <span style="font-size:0.8rem; color:#666; margin-left:10px;">${new Date(r.timestamp).toLocaleDateString()}</span>
+                        </div>
+                        <span style="background:${statusColor}; color:white; padding:4px 8px; border-radius:4px; font-size:0.7rem; font-weight:bold;">${statusText}</span>
+                    </div>
+                    <div style="font-size:0.9rem; color:#555; margin-top:5px;">
+                        Last Med: ${r.medName || 'None'} at ${r.medTime || 'N/A'}
+                    </div>
+                    ${responseHtml}
+                `;
+                container.appendChild(div);
+            });
+        } catch (err) {
+            console.error(err);
+            document.getElementById('patient-alerts-list').innerHTML = '<p>Error loading alerts.</p>';
+        }
     }
 
     function loadPatientProfile() {
@@ -514,36 +562,55 @@
         `;
     }
 
+    // --- FIXED: Nurse Dashboard Loading ---
     async function loadDashboard() {
-        const res = await fetch('/api/all-reports');
-        const reports = await res.json();
-        const tbody = document.getElementById('patients-table-body');
-        tbody.innerHTML = '';
-        
-        const myReports = reports.filter(r => {
-            if(currentUser.role === 'pain-nurse') return true;
-            if(currentUser.role === 'community-nurse') return r.referralType === 'community-nurse';
-            return false;
-        });
+        try {
+            const res = await fetch('/api/all-reports');
+            const reports = await res.json();
+            const tbody = document.getElementById('patients-table-body');
+            tbody.innerHTML = '';
+            
+            const myReports = reports.filter(r => {
+                if(currentUser.role === 'pain-nurse') return true;
+                if(currentUser.role === 'community-nurse') return r.referralType === 'community-nurse';
+                return false;
+            });
 
-        if(myReports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No patient reports found.</td></tr>';
-            return;
+            if(myReports.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 30px; color:#666;">No patient reports found. Wait for a patient to submit pain.</td></tr>';
+                return;
+            }
+
+            myReports.reverse().forEach(r => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #e2e8f0';
+                
+                const isPending = r.status === 'pending';
+                const statusClass = isPending ? 'badge-patient' : 'badge-nurse';
+                const statusText = isPending ? 'PENDING' : 'RESPONDED';
+                
+                // If responded, hide button and show status
+                const actionCell = isPending 
+                    ? `<button onclick='openResponseModal(${JSON.stringify(r).replace(/'/g, "&#39;")})' class="btn btn-sm btn-primary">Respond</button>`
+                    : `<span style="color:green; font-weight:bold;">✅ Done</span>`;
+
+                const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+                
+                tr.innerHTML = `
+                    <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
+                    <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
+                    <td style="padding:12px; font-size:0.9rem;">${r.medName} @ ${r.medTime}</td>
+                    <td style="padding:12px;">
+                        <span class="badge ${statusClass}">${statusText}</span>
+                        ${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}
+                    </td>
+                    <td style="padding:12px;">${actionCell}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error(err);
         }
-
-        myReports.reverse().forEach(r => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #e2e8f0';
-            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
-            tr.innerHTML = `
-                <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
-                <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
-                <td style="padding:12px; font-size:0.9rem;">${r.medName} @ ${r.medTime}</td>
-                <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
-                <td style="padding:12px;"><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button></td>
-            `;
-            tbody.appendChild(tr);
-        });
     }
 
     async function loadDoctorDashboard() {
@@ -600,6 +667,7 @@
         else selectedTreatments.push(text);
     };
 
+    // --- FIXED: Submit Response ---
     window.submitResponse = async (type) => {
         const instructions = document.getElementById('modal-instructions').value;
         let finalMessage = "";
@@ -613,9 +681,24 @@
             finalMessage = `REFERRAL TO DOCTOR: ${instructions || 'Urgent consultation required.'}`;
         }
         try {
-            await fetch('/api/send-response', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reportId: activeReportId, nurseId: currentUser.id, nurseName: currentUser.name, message: finalMessage, referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) }) });
-            closeModal(); loadDashboard(); showAlert('Response sent successfully', 'success');
-        } catch(err) { alert('Error sending response'); }
+            await fetch('/api/send-response', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ 
+                    reportId: activeReportId, 
+                    nurseId: currentUser.id, 
+                    nurseName: currentUser.name, 
+                    message: finalMessage, 
+                    referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) 
+                }) 
+            });
+            closeModal(); 
+            loadDashboard(); // Refresh table immediately
+            showAlert('Response sent successfully! Patient will see this now.', 'success');
+        } catch(err) { 
+            console.error(err);
+            alert('Error sending response'); 
+        }
     };
 
     function handleChatKey(e, type) { if(e.key === 'Enter') sendChat(type); }
@@ -642,29 +725,38 @@
     }
 
     async function loadChat() {
-        const res = await fetch('/api/get-messages');
-        const msgs = await res.json();
-        
-        let containerId = 'staff-chat-window';
-        if(currentUser.role === 'patient') {
-            containerId = 'patient-chat-window';
-        }
-        
-        const container = document.getElementById(containerId);
-        if(!container) return;
+        try {
+            const res = await fetch('/api/get-messages');
+            const msgs = await res.json();
+            
+            let containerId = 'staff-chat-window';
+            if(currentUser.role === 'patient') {
+                containerId = 'patient-chat-window';
+            }
+            
+            const container = document.getElementById(containerId);
+            if(!container) return;
 
-        container.innerHTML = '';
-        msgs.forEach(m => {
-            const div = document.createElement('div');
-            const isMe = m.senderId === currentUser.id;
-            div.className = `message ${isMe ? 'sent' : 'received'}`;
-            div.innerHTML = `
-                <div>${m.message}</div>
-                <span class="message-meta">${m.senderName} (${m.role}) • ${new Date(m.timestamp).toLocaleTimeString()}</span>
-            `;
-            container.appendChild(div);
-        });
-        container.scrollTop = container.scrollHeight;
+            container.innerHTML = '';
+            if(msgs.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">No messages yet. Start the conversation!</p>';
+                return;
+            }
+
+            msgs.forEach(m => {
+                const div = document.createElement('div');
+                const isMe = m.senderId === currentUser.id;
+                div.className = `message ${isMe ? 'sent' : 'received'}`;
+                div.innerHTML = `
+                    <div>${m.message}</div>
+                    <span class="message-meta">${m.senderName} (${m.role}) • ${new Date(m.timestamp).toLocaleTimeString()}</span>
+                `;
+                container.appendChild(div);
+            });
+            container.scrollTop = container.scrollHeight;
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     window.generateReport = async (period) => {
