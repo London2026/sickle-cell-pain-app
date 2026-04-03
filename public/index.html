@@ -6,11 +6,7 @@
     <title>Sickle Cell Care Connect</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root {
-            --primary: #0ea5e9; --primary-dark: #0284c7; --secondary: #64748b;
-            --accent: #f43f5e; --bg: #f8fafc; --card: #ffffff; --text: #1e293b;
-            --success: #10b981; --warning: #f59e0b;
-        }
+        :root { --primary: #0ea5e9; --primary-dark: #0284c7; --secondary: #64748b; --accent: #f43f5e; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --success: #10b981; --warning: #f59e0b; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; line-height: 1.6; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .header { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; padding: 2rem 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
@@ -30,7 +26,7 @@
         .auth-container { max-width: 450px; margin: 40px auto; }
         .role-tabs { display: flex; gap: 10px; margin-bottom: 20px; background: #e2e8f0; padding: 5px; border-radius: 10px; }
         .role-tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; font-weight: 600; color: var(--secondary); transition: all 0.2s; }
-        .role-tab.active { background: white; color: var(--primary); shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .role-tab.active { background: white; color: var(--primary); }
         .dashboard-grid { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
         .sidebar { background: var(--card); padding: 20px; border-radius: 12px; height: fit-content; }
         .nav-item { display: block; padding: 12px; margin-bottom: 8px; border-radius: 8px; color: var(--text); text-decoration: none; cursor: pointer; transition: background 0.2s; }
@@ -57,10 +53,8 @@
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
         .badge-patient { background: #dbeafe; color: #1e40af; }
         .badge-nurse { background: #dcfce7; color: #166534; }
-        .badge-doctor { background: #fae8ff; color: #86198f; }
         h2 { color: var(--text); margin-top: 0; }
         .section-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--primary-dark); border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
-        
         .patient-info-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .patient-info-box strong { color: var(--primary-dark); }
         .full-width { grid-column: span 2; }
@@ -120,7 +114,7 @@
                     <div class="form-group"><label>GP Practice Name</label><input type="text" id="reg-gp"></div>
                     <div class="form-group"><label>GP Phone</label><input type="tel" id="reg-gp-phone"></div>
                     <div class="form-group"><label>Address & Postcode</label><textarea id="reg-address" rows="2"></textarea></div>
-                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2" placeholder="Sickle cell type, complications..."></textarea></div>
+                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2" placeholder="Sickle cell type..."></textarea></div>
                     <div class="form-group"><label>Regular Medications</label><textarea id="reg-regular-meds" rows="2"></textarea></div>
                     <div class="form-group"><label>Prescribed Pain Meds</label><input type="text" id="reg-pain-meds"></div>
                 </div>
@@ -303,7 +297,6 @@
     let currentRole = 'patient';
     let selectedTreatments = [];
     let activeReportId = null;
-    let currentReportData = null;
     let painChartInstance = null;
     let medChartInstance = null;
 
@@ -311,14 +304,17 @@
         initNPRSScale();
         checkSession();
         socket = io();
-        socket.on('connect', () => console.log('Connected'));
+        socket.on('connect', () => console.log('Connected to server'));
         
-        // Real-time updates
-        socket.on('new-message', () => { if(currentUser) loadChat(); });
+        // Listen for real-time updates
+        socket.on('new-message', () => { 
+            if(currentUser) loadChat(); 
+        });
+        
         socket.on('report-updated', () => {
+            console.log('Report updated event received');
             if(currentUser?.role === 'patient') {
                 loadPatientAlerts();
-                showAlert('Your report has been updated by a nurse!', 'success');
             }
             if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) {
                 loadDashboard();
@@ -367,7 +363,6 @@
         else { document.getElementById('login-form').classList.remove('hidden'); document.getElementById('register-form').classList.add('hidden'); }
     }
 
-    // --- FIXED LOGIN LOGIC ---
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = document.getElementById('login-email').value;
@@ -451,7 +446,7 @@
         } else if (['pain-nurse', 'community-nurse'].includes(currentUser.role)) {
             document.getElementById('nurse-nav').classList.remove('hidden');
             showPage('n-dashboard');
-            loadDashboard(); // Loads immediately
+            loadDashboard(); // Load dashboard immediately
             const isPainNurse = currentUser.role === 'pain-nurse';
             document.getElementById('btn-refer-community').style.display = isPainNurse ? 'block' : 'none';
             document.getElementById('btn-refer-doctor').style.display = isPainNurse ? 'block' : 'none';
@@ -493,7 +488,6 @@
         } catch(err) { showAlert('Failed to send report', 'error'); }
     });
 
-    // --- FIXED: Patient Alerts Loading ---
     async function loadPatientAlerts() {
         try {
             const res = await fetch(`/api/patient-reports/${currentUser.id}`);
@@ -501,7 +495,7 @@
             const container = document.getElementById('patient-alerts-list');
             
             if (!reports || reports.length === 0) {
-                container.innerHTML = '<p style="color:#666; text-align:center;">No reports submitted yet.</p>';
+                container.innerHTML = '<p>No reports yet.</p>';
                 return;
             }
 
@@ -509,41 +503,26 @@
             reports.reverse().forEach(r => {
                 const div = document.createElement('div');
                 div.style.borderBottom = '1px solid #eee'; 
-                div.style.padding = '15px 0';
-                
-                let statusColor = r.status === 'pending' ? '#f59e0b' : '#10b981';
-                let statusText = r.status === 'pending' ? 'PENDING REVIEW' : 'RESPONDED';
+                div.style.padding = '10px 0';
+                let statusColor = r.status === 'pending' ? 'orange' : 'green';
                 
                 let responseHtml = '';
                 if (r.response) {
-                    responseHtml = `
-                        <div style="background:#f0f9ff; padding:12px; margin-top:10px; border-radius:6px; border-left: 4px solid var(--primary);">
-                            <div style="font-weight:bold; color:var(--primary); margin-bottom:5px;">✅ Response from ${r.responderName || 'Care Team'}:</div>
-                            <div style="white-space: pre-wrap; color:#333;">${r.response}</div>
-                            <div style="font-size:0.75rem; color:#666; margin-top:5px;">Received: ${new Date(r.timestamp).toLocaleString()}</div>
-                        </div>
-                    `;
-                } else {
-                    responseHtml = `<div style="color:#f59e0b; font-size:0.85rem; margin-top:5px;">⏳ Waiting for nurse response...</div>`;
+                    responseHtml = `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse ${r.responderName || ''}:</strong> ${r.response}</div>`;
                 }
 
                 div.innerHTML = `
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <div>
-                            <span style="font-size:1.2rem; font-weight:bold; color:${statusColor}">Pain Level: ${r.painLevel}</span>
-                            <span style="font-size:0.8rem; color:#666; margin-left:10px;">${new Date(r.timestamp).toLocaleDateString()}</span>
-                        </div>
-                        <span style="background:${statusColor}; color:white; padding:4px 8px; border-radius:4px; font-size:0.7rem; font-weight:bold;">${statusText}</span>
+                    <div style="display:flex; justify-content:space-between;">
+                        <strong>Pain Level: ${r.painLevel}</strong>
+                        <span style="color:${statusColor}; font-size:0.8rem">${r.status.toUpperCase()}</span>
                     </div>
-                    <div style="font-size:0.9rem; color:#555; margin-top:5px;">
-                        Last Med: ${r.medName || 'None'} at ${r.medTime || 'N/A'}
-                    </div>
+                    <div style="font-size:0.9rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>
                     ${responseHtml}
                 `;
                 container.appendChild(div);
             });
         } catch (err) {
-            console.error(err);
+            console.error("Error loading patient alerts:", err);
             document.getElementById('patient-alerts-list').innerHTML = '<p>Error loading alerts.</p>';
         }
     }
@@ -562,7 +541,6 @@
         `;
     }
 
-    // --- FIXED: Nurse Dashboard Loading ---
     async function loadDashboard() {
         try {
             const res = await fetch('/api/all-reports');
@@ -577,7 +555,7 @@
             });
 
             if(myReports.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 30px; color:#666;">No patient reports found. Wait for a patient to submit pain.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No patient reports found.</td></tr>';
                 return;
             }
 
@@ -585,31 +563,25 @@
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid #e2e8f0';
                 
-                const isPending = r.status === 'pending';
-                const statusClass = isPending ? 'badge-patient' : 'badge-nurse';
-                const statusText = isPending ? 'PENDING' : 'RESPONDED';
-                
-                // If responded, hide button and show status
-                const actionCell = isPending 
-                    ? `<button onclick='openResponseModal(${JSON.stringify(r).replace(/'/g, "&#39;")})' class="btn btn-sm btn-primary">Respond</button>`
-                    : `<span style="color:green; font-weight:bold;">✅ Done</span>`;
+                let actionBtn = '';
+                if (r.status === 'pending') {
+                    const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+                    actionBtn = `<button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button>`;
+                } else {
+                    actionBtn = `<span style="color:green; font-weight:bold;">Responded</span>`;
+                }
 
-                const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
-                
                 tr.innerHTML = `
                     <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
                     <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
                     <td style="padding:12px; font-size:0.9rem;">${r.medName} @ ${r.medTime}</td>
-                    <td style="padding:12px;">
-                        <span class="badge ${statusClass}">${statusText}</span>
-                        ${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}
-                    </td>
-                    <td style="padding:12px;">${actionCell}</td>
+                    <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
+                    <td style="padding:12px;">${actionBtn}</td>
                 `;
                 tbody.appendChild(tr);
             });
         } catch (err) {
-            console.error(err);
+            console.error("Error loading dashboard:", err);
         }
     }
 
@@ -633,7 +605,6 @@
 
     window.openResponseModal = function(report) {
         activeReportId = report.id;
-        currentReportData = report;
         document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
         
         let age = 'N/A';
@@ -661,13 +632,13 @@
     };
 
     window.closeModal = function() { document.getElementById('response-modal').classList.add('hidden'); activeReportId = null; };
+    
     window.addTreatment = function(btn, text) {
         btn.classList.toggle('selected');
         if(selectedTreatments.includes(text)) selectedTreatments = selectedTreatments.filter(t => t !== text);
         else selectedTreatments.push(text);
     };
 
-    // --- FIXED: Submit Response ---
     window.submitResponse = async (type) => {
         const instructions = document.getElementById('modal-instructions').value;
         let finalMessage = "";
@@ -680,8 +651,9 @@
         } else if (type === 'refer-doctor') {
             finalMessage = `REFERRAL TO DOCTOR: ${instructions || 'Urgent consultation required.'}`;
         }
+        
         try {
-            await fetch('/api/send-response', { 
+            const res = await fetch('/api/send-response', { 
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({ 
@@ -692,12 +664,18 @@
                     referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) 
                 }) 
             });
-            closeModal(); 
-            loadDashboard(); // Refresh table immediately
-            showAlert('Response sent successfully! Patient will see this now.', 'success');
+            
+            const result = await res.json();
+            if(result.success) {
+                closeModal(); 
+                loadDashboard(); 
+                showAlert('Response sent successfully', 'success');
+            } else {
+                alert('Error: ' + result.message);
+            }
         } catch(err) { 
-            console.error(err);
             alert('Error sending response'); 
+            console.error(err);
         }
     };
 
@@ -738,11 +716,6 @@
             if(!container) return;
 
             container.innerHTML = '';
-            if(msgs.length === 0) {
-                container.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">No messages yet. Start the conversation!</p>';
-                return;
-            }
-
             msgs.forEach(m => {
                 const div = document.createElement('div');
                 const isMe = m.senderId === currentUser.id;
@@ -755,7 +728,7 @@
             });
             container.scrollTop = container.scrollHeight;
         } catch (err) {
-            console.error(err);
+            console.error("Error loading chat:", err);
         }
     }
 

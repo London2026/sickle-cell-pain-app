@@ -77,7 +77,10 @@ app.post('/api/register', async (req, res) => {
 
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Register Error:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Login
@@ -89,9 +92,12 @@ app.post('/api/login', async (req, res) => {
       const { password, ...safeUser } = user.toObject();
       res.json({ success: true, user: { ...safeUser, id: user._id } });
     } else {
-      res.json({ success: false, message: 'Invalid credentials or role' });
+      res.json({ success: false, message: 'Invalid credentials or role selected' });
     }
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Login Error:", err);
+    res.status(500).json({ success: false, message: 'Server error' }); 
+  }
 });
 
 // Submit Pain Report
@@ -117,8 +123,11 @@ app.post('/api/submit-report', async (req, res) => {
     });
 
     io.emit('report-updated');
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+    res.json({ success: true, reportId: newReport._id });
+  } catch (err) { 
+    console.error("Submit Report Error:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Get Patient Reports
@@ -126,7 +135,10 @@ app.get('/api/patient-reports/:id', async (req, res) => {
   try {
     const reports = await Report.find({ patientId: req.params.id }).sort({ timestamp: -1 });
     res.json(reports);
-  } catch (err) { res.status(500).json([]); }
+  } catch (err) { 
+    console.error("Get Patient Reports Error:", err);
+    res.status(500).json([]); 
+  }
 });
 
 // Get All Reports
@@ -134,28 +146,41 @@ app.get('/api/all-reports', async (req, res) => {
   try {
     const reports = await Report.find().sort({ timestamp: -1 });
     res.json(reports);
-  } catch (err) { res.status(500).json([]); }
+  } catch (err) { 
+    console.error("Get All Reports Error:", err);
+    res.status(500).json([]); 
+  }
 });
 
-// Send Response (FIXED: Uses findByIdAndUpdate with correct options)
+// Send Response (FIXED: Properly updates DB and emits event)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    // Update the report status and response
-    await Report.findByIdAndUpdate(reportId, {
-      status: 'responded', 
-      response: message, 
-      responderName: nurseName, 
-      referralType: referralType || null
-    }, {
-      returnDocument: 'after' // Fixes the Mongoose warning
-    });
+    // Update the report in database
+    const updatedReport = await Report.findByIdAndUpdate(
+      reportId,
+      { 
+        status: 'responded', 
+        response: message, 
+        responderName: nurseName, 
+        referralType: referralType || null 
+      },
+      { new: true } // Return the updated document
+    );
 
-    io.emit('report-updated'); // Notify all clients to refresh
-    res.json({ success: true });
+    if (!updatedReport) {
+      return res.status(404).json({ success: false, message: 'Report not found' });
+    }
+
+    console.log(`✅ Report ${reportId} updated successfully.`);
+    
+    // Emit event to notify all clients
+    io.emit('report-updated');
+    
+    res.json({ success: true, message: 'Response sent successfully' });
   } catch (err) { 
-    console.error("Response Error:", err);
+    console.error("Send Response Error:", err);
     res.status(500).json({ success: false, message: err.message }); 
   }
 });
@@ -164,18 +189,24 @@ app.post('/api/send-response', async (req, res) => {
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
-    await Message.create({ senderId, senderName, receiverId, message, role });
-    io.emit('new-message');
+    const newMsg = await Message.create({ senderId, senderName, receiverId, message, role });
+    io.emit('new-message', newMsg);
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+  } catch (err) { 
+    console.error("Send Message Error:", err);
+    res.status(500).json({ success: false, message: err.message }); 
+  }
 });
 
 // Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
-    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(100);
     res.json(messages);
-  } catch (err) { res.status(500).json([]); }
+  } catch (err) { 
+    console.error("Get Messages Error:", err);
+    res.status(500).json([]); 
+  }
 });
 
 // AI: Generate Report
@@ -189,9 +220,9 @@ app.post('/api/generate-ai-report', async (req, res) => {
     if (period === 'yearly') cutoff.setFullYear(now.getFullYear() - 1);
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
-    if (reports.length === 0) return res.json({ success: true, report: "No data available.", stats: null });
+    if (reports.length === 0) return res.json({ success: true, report: "No data available for this period.", stats: null });
 
-    // Calculate Stats for Charts
+    // Calculate stats
     const painMild = reports.filter(r => r.painLevel <= 3).length;
     const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
     const painSevere = reports.filter(r => r.painLevel > 6).length;
@@ -213,21 +244,23 @@ app.post('/api/generate-ai-report', async (req, res) => {
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
-        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data professionally." },
+        { role: "user", content: `Period: ${period}. Data Summary: ${JSON.stringify(stats)}. Provide a concise report with: 1. Executive Summary, 2. Pain Level Trends, 3. Medication Usage Analysis, 4. Referral Statistics.` }
       ]
     });
 
-    res.json({ success: true, report: completion.choices[0].message.content, stats: stats });
+    res.json({ success: true, report: completion.choices[0].message.content, stats });
   } catch (error) {
     console.error("AI Error:", error);
-    res.json({ success: false, message: "AI Service Unavailable." });
+    res.json({ success: false, message: "AI Service Unavailable. Check API Key.", stats: null });
   }
 });
 
 // --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+  cors: { origin: "*" }
+});
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
