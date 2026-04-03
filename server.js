@@ -137,33 +137,25 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Ensures DB update and Socket emit)
+// Send Response (FIXED: Uses findByIdAndUpdate with correct options)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    // 1. Update the report in MongoDB
-    const updatedReport = await Report.findByIdAndUpdate(
-      reportId, 
-      { 
-        status: 'responded', 
-        response: message, 
-        responderName: nurseName, 
-        referralType: referralType || null 
-      },
-      { new: true } // Return the updated document
-    );
+    // Update the report status and response
+    await Report.findByIdAndUpdate(reportId, {
+      status: 'responded', 
+      response: message, 
+      responderName: nurseName, 
+      referralType: referralType || null
+    }, {
+      returnDocument: 'after' // Fixes the Mongoose warning
+    });
 
-    if (!updatedReport) {
-      return res.status(404).json({ success: false, message: 'Report not found' });
-    }
-
-    // 2. Emit event to ALL clients so Patient sees it immediately
-    io.emit('report-updated');
-    
-    res.json({ success: true, report: updatedReport });
+    io.emit('report-updated'); // Notify all clients to refresh
+    res.json({ success: true });
   } catch (err) { 
-    console.error("Error sending response:", err);
+    console.error("Response Error:", err);
     res.status(500).json({ success: false, message: err.message }); 
   }
 });
@@ -172,8 +164,8 @@ app.post('/api/send-response', async (req, res) => {
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
-    const newMsg = await Message.create({ senderId, senderName, receiverId, message, role });
-    io.emit('new-message', newMsg);
+    await Message.create({ senderId, senderName, receiverId, message, role });
+    io.emit('new-message');
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
@@ -199,7 +191,7 @@ app.post('/api/generate-ai-report', async (req, res) => {
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
     if (reports.length === 0) return res.json({ success: true, report: "No data available.", stats: null });
 
-    // Calculate Stats
+    // Calculate Stats for Charts
     const painMild = reports.filter(r => r.painLevel <= 3).length;
     const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
     const painSevere = reports.filter(r => r.painLevel > 6).length;
