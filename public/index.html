@@ -3,10 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sickle Cell Care Connect</title>
+    <title>NPRS Pain Management Portal</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --primary: #0ea5e9; --primary-dark: #0284c7; --secondary: #64748b; --accent: #f43f5e; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; --success: #10b981; --warning: #f59e0b; }
+        :root {
+            --primary: #0ea5e9; --primary-dark: #0284c7; --secondary: #64748b;
+            --accent: #f43f5e; --bg: #f8fafc; --card: #ffffff; --text: #1e293b;
+            --success: #10b981; --warning: #f59e0b;
+        }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; line-height: 1.6; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .header { background: linear-gradient(135deg, var(--primary), var(--primary-dark)); color: white; padding: 2rem 0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
@@ -53,8 +57,10 @@
         .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
         .badge-patient { background: #dbeafe; color: #1e40af; }
         .badge-nurse { background: #dcfce7; color: #166534; }
+        .badge-doctor { background: #fae8ff; color: #86198f; }
         h2 { color: var(--text); margin-top: 0; }
         .section-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; color: var(--primary-dark); border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        
         .patient-info-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .patient-info-box strong { color: var(--primary-dark); }
         .full-width { grid-column: span 2; }
@@ -65,13 +71,15 @@
         .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .chart-wrapper { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; height: 300px; }
         @media (max-width: 768px) { .charts-container { grid-template-columns: 1fr; } .patient-info-box { grid-template-columns: 1fr; } }
+        
+        .symptom-highlight { background: #fffbeb; border-left: 4px solid var(--warning); padding: 10px; margin-top: 5px; font-style: italic; }
     </style>
 </head>
 <body>
 
 <div class="header">
     <div class="header-content">
-        <div class="logo">🩸 Sickle Cell Care Connect</div>
+        <div class="logo">🩸 NPRS Pain Management Portal</div>
         <div id="user-info" class="hidden">
             <span id="user-name-display" style="margin-right: 15px; font-weight: 600;"></span>
             <button onclick="logout()" class="btn btn-sm btn-outline" style="border-color: white; color: white;">Logout</button>
@@ -92,6 +100,7 @@
                 <div class="role-tab" onclick="switchAuthTab('community-nurse')">Community Nurse</div>
                 <div class="role-tab" onclick="switchAuthTab('doctor')">Doctor</div>
             </div>
+
             <form id="login-form">
                 <input type="hidden" id="login-role" value="patient">
                 <div class="form-group"><label>Email Address</label><input type="email" id="login-email" required placeholder="name@example.com"></div>
@@ -99,32 +108,37 @@
                 <button type="submit" class="btn btn-primary">Secure Login</button>
                 <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">New here? <a href="#" onclick="toggleAuthMode('register')" style="color: var(--primary);">Create Account</a></p>
             </form>
+
             <form id="register-form" class="hidden">
                 <input type="hidden" id="reg-role" value="patient">
                 <div class="form-group"><label>Full Name</label><input type="text" id="reg-name" required></div>
                 <div class="form-group"><label>Email</label><input type="email" id="reg-email" required></div>
                 <div class="form-group"><label>Phone</label><input type="tel" id="reg-phone" required></div>
                 <div class="form-group"><label>Password</label><input type="password" id="reg-password" required></div>
+                
                 <div id="patient-reg-fields">
                     <div class="form-group"><label>Date of Birth</label><input type="date" id="reg-dob"></div>
                     <div class="form-group"><label>NHS Number</label><input type="text" id="reg-nhs" placeholder="10 digit number"></div>
                     <div class="form-group"><label>GP Practice Name</label><input type="text" id="reg-gp"></div>
                     <div class="form-group"><label>GP Phone</label><input type="tel" id="reg-gp-phone"></div>
                     <div class="form-group"><label>Address & Postcode</label><textarea id="reg-address" rows="2"></textarea></div>
-                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2"></textarea></div>
+                    <div class="form-group"><label>Medical History</label><textarea id="reg-history" rows="2" placeholder="Sickle cell type, complications..."></textarea></div>
                     <div class="form-group"><label>Regular Medications</label><textarea id="reg-regular-meds" rows="2"></textarea></div>
                     <div class="form-group"><label>Prescribed Pain Meds</label><input type="text" id="reg-pain-meds"></div>
                 </div>
+
                 <div id="staff-reg-fields" class="hidden">
-                    <div class="form-group"><label>Employee ID</label><input type="text" id="reg-staff-id"></div>
-                    <div class="form-group"><label>Department</label><input type="text" id="reg-dept"></div>
+                    <div class="form-group"><label>Employee ID / License Number</label><input type="text" id="reg-staff-id"></div>
+                    <div class="form-group"><label>Department / Specialty</label><input type="text" id="reg-dept"></div>
                 </div>
+
                 <button type="submit" class="btn btn-primary">Register Account</button>
                 <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">Already registered? <a href="#" onclick="toggleAuthMode('login')" style="color: var(--primary);">Login</a></p>
             </form>
+            
             <div style="margin-top: 20px; padding: 10px; background: #f1f5f9; border-radius: 6px; font-size: 0.85rem;">
                 <strong>Demo Logins (Password: 123):</strong><br>
-                Patient: patient@demo.com | Nurse: nurse@demo.com
+                Patient: patient@demo.com | Nurse: nurse@demo.com | Community: community@demo.com | Doctor: doctor@demo.com
             </div>
         </div>
     </div>
@@ -150,27 +164,53 @@
             </div>
 
             <div class="main-content">
-                <!-- PATIENT: Home -->
+                <!-- PATIENT: Home/Pain Report -->
                 <div id="p-home" class="page-section">
                     <div class="card">
                         <h2 class="section-title">Submit Pain Report</h2>
+                        <p style="font-size: 1.1rem; color: var(--secondary); margin-bottom: 20px;">
+                            <strong>Numerical Rating Scale (NPRS):</strong> 0 = no pain, 10 = worst possible pain.<br>
+                            This report provides instant routing to the pain management nurse.
+                        </p>
                         <form id="pain-report-form">
                             <label>Current Pain Level:</label>
                             <div class="nprs-container" id="nprs-scale"></div>
                             <input type="hidden" id="report-pain-level" required>
-                            <div id="pain-level-text" style="text-align: center; font-weight: bold; color: var(--primary); margin-bottom: 15px;"></div>
+                            <div id="pain-level-text" style="text-align: center; font-weight: bold; color: var(--primary); margin-bottom: 15px; min-height: 24px;"></div>
+
+                            <!-- NEW: Pain Location Dropdown -->
+                            <div class="form-group">
+                                <label>Pain Location</label>
+                                <select id="report-pain-location" required>
+                                    <option value="" disabled selected>Select location...</option>
+                                    <option value="Lower Back">Lower Back</option>
+                                    <option value="Upper Back">Upper Back</option>
+                                    <option value="Legs">Legs</option>
+                                    <option value="Arms">Arms</option>
+                                    <option value="Chest">Chest</option>
+                                    <option value="Abdomen">Abdomen</option>
+                                    <option value="Head">Head</option>
+                                    <option value="Joints">Joints</option>
+                                    <option value="Whole Body">Whole Body</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            <!-- NEW: Symptoms Description -->
+                            <div class="form-group">
+                                <label>Describe your symptoms and concerns</label>
+                                <textarea id="report-symptoms" rows="3" placeholder="e.g., sharp, dull, burning, throbbing, tingling..."></textarea>
+                            </div>
+
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <div class="form-group"><label>Last Med Taken</label><input type="text" id="report-med-name"></div>
+                                <div class="form-group"><label>Last Med Taken</label><input type="text" id="report-med-name" placeholder="e.g. Paracetamol"></div>
                                 <div class="form-group"><label>Time Taken</label><input type="time" id="report-med-time"></div>
                             </div>
-                            <div class="form-group"><label>Notes</label><textarea id="report-notes" rows="2"></textarea></div>
-                            <button type="submit" class="btn btn-primary">Send Alert</button>
+                            
+                            <button type="submit" class="btn btn-primary">Send Alert to Care Team</button>
                         </form>
                     </div>
-                    <div class="card">
-                        <h3>My Recent Alerts</h3>
-                        <div id="patient-alerts-list">Loading...</div>
-                    </div>
+                    <div class="card"><h3>My Recent Alerts</h3><div id="patient-alerts-list"></div></div>
                 </div>
 
                 <!-- PATIENT: Chat -->
@@ -180,7 +220,7 @@
                         <div class="chat-box">
                             <div class="chat-messages" id="patient-chat-window"></div>
                             <div class="chat-input-area">
-                                <input type="text" id="patient-chat-input" placeholder="Type..." onkeypress="handleChatKey(event, 'patient')">
+                                <input type="text" id="patient-chat-input" placeholder="Type a message..." onkeypress="handleChatKey(event, 'patient')">
                                 <button onclick="sendChat('patient')" class="btn btn-primary" style="width: auto;">Send</button>
                             </div>
                         </div>
@@ -189,71 +229,98 @@
 
                 <!-- PATIENT: Profile -->
                 <div id="p-profile" class="page-section hidden">
-                    <div class="card"><h2 class="section-title">My Profile</h2><div id="patient-profile-view"></div></div>
+                    <div class="card"><h2 class="section-title">My Medical Profile</h2><div id="patient-profile-view"></div></div>
                 </div>
 
-                <!-- NURSE: Dashboard -->
+                <!-- NURSE/DOCTOR: Dashboard -->
                 <div id="n-dashboard" class="page-section hidden">
                     <div class="card">
-                        <h2 class="section-title">Patient Alerts</h2>
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead><tr style="background: #f1f5f9; text-align: left;"><th style="padding:12px;">Patient</th><th style="padding:12px;">Pain</th><th style="padding:12px;">Meds</th><th style="padding:12px;">Status</th><th style="padding:12px;">Action</th></tr></thead>
-                            <tbody id="patients-table-body"></tbody>
-                        </table>
+                        <h2 class="section-title">Patient Alerts & Referrals</h2>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse;" id="patients-table">
+                                <thead>
+                                    <tr style="background: #f1f5f9; text-align: left;">
+                                        <th style="padding: 12px;">Patient</th>
+                                        <th style="padding: 12px;">Location / Pain</th>
+                                        <th style="padding: 12px;">Symptoms</th>
+                                        <th style="padding: 12px;">Status</th>
+                                        <th style="padding: 12px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="patients-table-body"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Response Modal -->
-                <div id="response-modal" class="hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000;">
-                    <div class="card" style="width:700px;max-width:90%;max-height:90vh;overflow-y:auto;">
-                        <h3 id="modal-patient-name">Responding</h3>
+                <!-- NURSE/DOCTOR: Response Modal -->
+                <div id="response-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+                    <div class="card" style="width: 700px; max-width: 90%; max-height: 90vh; overflow-y: auto;">
+                        <h3 id="modal-patient-name">Responding to Patient</h3>
                         <div id="modal-patient-details" class="patient-info-box"></div>
-                        <label>Treatments:</label>
+
+                        <label>Treatment Recommendations (Click to add):</label>
                         <div class="treatment-grid">
-                            <div class="treatment-btn" onclick="addTreatment(this, 'Ice Therapy')">❄️ Ice</div>
-                            <div class="treatment-btn" onclick="addTreatment(this, 'Heat')">🔥 Heat</div>
-                            <div class="treatment-btn" onclick="addTreatment(this, 'Rest')">🛌 Rest</div>
-                            <div class="treatment-btn" onclick="addTreatment(this, 'Hydration')">💧 Water</div>
-                            <div class="treatment-btn" onclick="addTreatment(this, 'OTC Meds')">💊 OTC</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Ice Therapy (20 min)')">❄️ Ice Therapy</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Heat Application')">🔥 Heat Application</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Rest & Elevation')">🛌 Rest & Elevation</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Gentle Stretching')">🧘 Gentle Stretching</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'OTC Pain Reliever')">💊 OTC Pain Reliever</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Deep Breathing Exercises')">🌬️ Deep Breathing</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Hydration (2-3 Liters)')">💧 Hydration</div>
+                            <div class="treatment-btn" onclick="addTreatment(this, 'Schedule Imaging')">📷 Schedule Imaging</div>
                         </div>
-                        <div class="form-group"><label>Instructions:</label><textarea id="modal-instructions" rows="3"></textarea></div>
-                        <div style="display:flex;gap:10px;margin-top:15px;">
-                            <button onclick="submitResponse('plan')" class="btn btn-primary">Send Plan</button>
-                            <button onclick="submitResponse('refer-community')" class="btn btn-outline" style="border-color:var(--warning);color:var(--warning)">Refer Community</button>
-                            <button onclick="closeModal()" class="btn btn-danger">Cancel</button>
+
+                        <div class="form-group"><label>Additional Instructions:</label><textarea id="modal-instructions" rows="3" placeholder="Specific guidance..."></textarea></div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                            <button onclick="submitResponse('plan')" class="btn btn-primary" style="flex: 1; min-width: 150px;">Send Treatment Plan</button>
+                            <button id="btn-refer-community" onclick="submitResponse('refer-community')" class="btn btn-outline" style="flex: 1; min-width: 150px; border-color: var(--warning); color: var(--warning);">Refer to Community Nurse</button>
+                            <button id="btn-refer-doctor" onclick="submitResponse('refer-doctor')" class="btn btn-outline" style="flex: 1; min-width: 150px; border-color: var(--accent); color: var(--accent);">Refer to Doctor</button>
+                            <button onclick="closeModal()" class="btn btn-danger" style="width: auto;">Cancel</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- NURSE: Chat -->
+                <!-- NURSE: Chat Page -->
                 <div id="n-chat" class="page-section hidden">
-                    <div class="card"><h2 class="section-title">Staff Chat</h2>
+                    <div class="card"><h2 class="section-title">Staff Messaging</h2>
                         <div class="chat-box">
                             <div class="chat-messages" id="staff-chat-window"></div>
                             <div class="chat-input-area">
-                                <input type="text" id="staff-chat-input" placeholder="Type..." onkeypress="handleChatKey(event, 'staff')">
+                                <input type="text" id="staff-chat-input" placeholder="Message patient or other staff..." onkeypress="handleChatKey(event, 'staff')">
                                 <button onclick="sendChat('staff')" class="btn btn-primary" style="width: auto;">Send</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- AI Reports -->
+                <!-- NURSE: AI Reports with Charts -->
                 <div id="n-reports" class="page-section hidden">
                     <div class="card">
-                        <h2 class="section-title">AI Stats</h2>
-                        <button onclick="generateReport('weekly')" class="btn btn-outline">Weekly</button>
-                        <button onclick="generateReport('monthly')" class="btn btn-outline">Monthly</button>
-                        <div id="stats-cards" class="stats-grid hidden" style="margin-top:20px;"></div>
-                        <div id="charts-area" class="charts-container hidden" style="margin-top:20px;">
+                        <h2 class="section-title">AI Statistical Reports</h2>
+                        <p>Generate insights based on patient data.</p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                            <button onclick="generateReport('weekly')" class="btn btn-outline">Weekly Report</button>
+                            <button onclick="generateReport('monthly')" class="btn btn-outline">Monthly Report</button>
+                            <button onclick="generateReport('yearly')" class="btn btn-outline">Yearly Report</button>
+                        </div>
+                        
+                        <div id="stats-cards" class="stats-grid hidden"></div>
+                        <div id="charts-area" class="charts-container hidden">
                             <div class="chart-wrapper"><canvas id="painChart"></canvas></div>
                             <div class="chart-wrapper"><canvas id="medChart"></canvas></div>
                         </div>
-                        <div id="ai-report-output" style="background:#f8fafc;padding:20px;margin-top:20px;border-radius:8px;white-space:pre-wrap;"></div>
+
+                        <div id="ai-report-output" style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; margin-top: 20px;"></div>
+                        <button onclick="downloadReport()" class="btn btn-sm btn-primary" style="margin-top:10px;">Save as Text/PDF Ready</button>
                     </div>
                 </div>
-                
-                <div id="d-dashboard" class="page-section hidden"><div class="card"><h2>Doctor Consultations</h2><div id="doctor-referrals-list"></div></div></div>
+
+                <!-- DOCTOR: Dashboard -->
+                <div id="d-dashboard" class="page-section hidden">
+                    <div class="card"><h2 class="section-title">Doctor Consultations</h2><p>Pending referrals from Pain Management Team.</p><div id="doctor-referrals-list"></div></div>
+                </div>
             </div>
         </div>
     </div>
@@ -261,51 +328,66 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-    let socket, currentUser;
-    let selectedTreatments = [], activeReportId = null;
-    let painChartInstance = null, medChartInstance = null;
+    let socket;
+    let currentUser = null;
+    let currentRole = 'patient';
+    let selectedTreatments = [];
+    let activeReportId = null;
+    let currentReportData = null;
+    let painChartInstance = null;
+    let medChartInstance = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         initNPRSScale();
         checkSession();
         socket = io();
+        socket.on('connect', () => console.log('Connected'));
+        socket.on('new-message', () => { if(currentUser) loadChat(); });
         socket.on('report-updated', () => {
             if(currentUser?.role === 'patient') loadPatientAlerts();
-            if(['pain-nurse', 'community-nurse'].includes(currentUser?.role)) loadDashboard();
+            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) loadDashboard();
         });
-        socket.on('new-message', () => { if(currentUser) loadChat(); });
     });
 
     function initNPRSScale() {
         const container = document.getElementById('nprs-scale');
-        const colors = ['#10b981','#10b981','#10b981','#10b981','#f59e0b','#f59e0b','#f59e0b','#f43f5e','#f43f5e','#f43f5e','#f43f5e'];
+        const colors = ['#10b981', '#10b981', '#10b981', '#10b981', '#f59e0b', '#f59e0b', '#f59e0b', '#f43f5e', '#f43f5e', '#f43f5e', '#f43f5e'];
         for(let i=0; i<=10; i++) {
             const btn = document.createElement('div');
-            btn.className = 'nprs-btn'; btn.innerText = i; btn.style.borderColor = colors[i];
+            btn.className = 'nprs-btn';
+            btn.innerText = i;
+            btn.style.borderColor = colors[i];
             btn.onclick = () => selectPain(i, btn, colors[i]);
             container.appendChild(btn);
         }
     }
 
-    function selectPain(level, btn, color) {
-        document.querySelectorAll('.nprs-btn').forEach(b => { b.classList.remove('selected'); b.style.transform='scale(1)'; });
-        btn.classList.add('selected'); btn.style.backgroundColor = color; btn.style.color = 'white'; btn.style.transform='scale(1.15)';
+    function selectPain(level, btnElement, color) {
+        document.querySelectorAll('.nprs-btn').forEach(b => { b.classList.remove('selected'); b.style.transform = 'scale(1)'; });
+        btnElement.classList.add('selected');
+        btnElement.style.backgroundColor = color;
+        btnElement.style.color = 'white';
+        btnElement.style.transform = 'scale(1.15)';
         document.getElementById('report-pain-level').value = level;
-        document.getElementById('pain-level-text').innerText = `Level: ${level}`;
+        const desc = level === 0 ? "No Pain" : (level <= 3 ? "Mild" : (level <= 6 ? "Moderate" : (level <= 8 ? "Severe" : "Extreme")));
+        document.getElementById('pain-level-text').innerText = `Selected: ${level} - ${desc}`;
+        document.getElementById('pain-level-text').style.color = color;
     }
 
     function switchAuthTab(role) {
+        currentRole = role;
         document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
         event.target.classList.add('active');
         document.getElementById('login-role').value = role;
         document.getElementById('reg-role').value = role;
-        document.getElementById('patient-reg-fields').classList.toggle('hidden', role !== 'patient');
-        document.getElementById('staff-reg-fields').classList.toggle('hidden', role === 'patient');
+        const isPatient = role === 'patient';
+        document.getElementById('patient-reg-fields').classList.toggle('hidden', !isPatient);
+        document.getElementById('staff-reg-fields').classList.toggle('hidden', isPatient);
     }
 
     function toggleAuthMode(mode) {
-        document.getElementById('login-form').classList.toggle('hidden', mode !== 'login');
-        document.getElementById('register-form').classList.toggle('hidden', mode !== 'register');
+        if(mode === 'register') { document.getElementById('login-form').classList.add('hidden'); document.getElementById('register-form').classList.remove('hidden'); } 
+        else { document.getElementById('login-form').classList.remove('hidden'); document.getElementById('register-form').classList.add('hidden'); }
     }
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -313,23 +395,40 @@
         const email = document.getElementById('login-email').value;
         const password = document.getElementById('login-password').value;
         const role = document.getElementById('login-role').value;
+        
+        const alertBox = document.getElementById('alert-box');
+        alertBox.style.display = 'none';
+
         try {
-            const res = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email,password,role}) });
+            const res = await fetch('/api/login', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ email, password, role }) 
+            });
+            
             const data = await res.json();
-            if(data.success) {
-                currentUser = data.user;
-                localStorage.setItem('user', JSON.stringify(currentUser));
-                showAlert('Login successful', 'success');
-                setTimeout(initDashboard, 500);
-            } else { showAlert(data.message, 'error'); }
-        } catch(err) { showAlert('Connection error', 'error'); }
+            
+            if (data.success) { 
+                currentUser = data.user; 
+                localStorage.setItem('user', JSON.stringify(currentUser)); 
+                showAlert('Login successful! Redirecting...', 'success');
+                setTimeout(() => {
+                    initDashboard();
+                }, 500);
+            } else { 
+                showAlert(data.message || 'Invalid credentials', 'error'); 
+            }
+        } catch(err) { 
+            console.error(err);
+            showAlert('Connection error. Please try again.', 'error'); 
+        }
     });
 
     document.getElementById('register-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const role = document.getElementById('reg-role').value;
-        const payload = { role, name:document.getElementById('reg-name').value, email:document.getElementById('reg-email').value, phone:document.getElementById('reg-phone').value, password:document.getElementById('reg-password').value };
-        if(role==='patient') {
+        const payload = { role, name: document.getElementById('reg-name').value, email: document.getElementById('reg-email').value, phone: document.getElementById('reg-phone').value, password: document.getElementById('reg-password').value };
+        if(role === 'patient') {
             payload.dob = document.getElementById('reg-dob').value;
             payload.nhsNumber = document.getElementById('reg-nhs').value;
             payload.gpPractice = document.getElementById('reg-gp').value;
@@ -343,105 +442,121 @@
             payload.department = document.getElementById('reg-dept').value;
         }
         try {
-            const res = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+            const res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             const data = await res.json();
-            if(data.success) { showAlert('Registered! Please login.', 'success'); toggleAuthMode('login'); }
+            if(data.success) { showAlert('Registration successful! Please login.', 'success'); toggleAuthMode('login'); } 
             else { showAlert(data.message, 'error'); }
-        } catch(err) { showAlert('Error', 'error'); }
+        } catch(err) { showAlert('Registration failed', 'error'); }
     });
 
     function checkSession() {
-        const s = localStorage.getItem('user');
-        if(s) { currentUser = JSON.parse(s); initDashboard(); }
+        const stored = localStorage.getItem('user');
+        if(stored) { currentUser = JSON.parse(stored); initDashboard(); }
     }
 
-    function logout() { localStorage.removeItem('user'); location.reload(); }
+    function logout() { localStorage.removeItem('user'); currentUser = null; location.reload(); }
 
     function initDashboard() {
         document.getElementById('auth-section').classList.add('hidden');
         document.getElementById('dashboard-section').classList.remove('hidden');
         document.getElementById('user-info').classList.remove('hidden');
-        document.getElementById('user-name-display').innerText = `${currentUser.name} (${currentUser.role})`;
-        
-        ['patient-nav','nurse-nav','doctor-nav'].forEach(id => document.getElementById(id).classList.add('hidden'));
-        
+        document.getElementById('user-name-display').innerText = `${currentUser.name} (${currentUser.role.replace('-', ' ')})`;
+        document.getElementById('patient-nav').classList.add('hidden');
+        document.getElementById('nurse-nav').classList.add('hidden');
+        document.getElementById('doctor-nav').classList.add('hidden');
+
         if(currentUser.role === 'patient') {
             document.getElementById('patient-nav').classList.remove('hidden');
             showPage('p-home');
-        } else if(['pain-nurse','community-nurse'].includes(currentUser.role)) {
+            loadPatientProfile();
+            loadPatientAlerts();
+        } else if (['pain-nurse', 'community-nurse'].includes(currentUser.role)) {
             document.getElementById('nurse-nav').classList.remove('hidden');
             showPage('n-dashboard');
-        } else if(currentUser.role === 'doctor') {
+            loadDashboard();
+            const isPainNurse = currentUser.role === 'pain-nurse';
+            document.getElementById('btn-refer-community').style.display = isPainNurse ? 'block' : 'none';
+            document.getElementById('btn-refer-doctor').style.display = isPainNurse ? 'block' : 'none';
+        } else if (currentUser.role === 'doctor') {
             document.getElementById('doctor-nav').classList.remove('hidden');
             showPage('d-dashboard');
+            loadDoctorDashboard();
         }
     }
 
-    function showPage(id) {
+    function showPage(pageId) {
         document.querySelectorAll('.page-section').forEach(p => p.classList.add('hidden'));
-        document.getElementById(id).classList.remove('hidden');
-        if(id.includes('chat')) loadChat();
-        if(id === 'n-dashboard') loadDashboard();
-        if(id === 'p-home') loadPatientAlerts(); // Force reload alerts
+        document.getElementById(pageId).classList.remove('hidden');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        event.target.classList.add('active');
+        
+        if(pageId === 'p-chat' || pageId === 'n-chat' || pageId === 'd-chat') loadChat();
+        if(pageId === 'n-dashboard') loadDashboard();
+        if(pageId === 'd-dashboard') loadDoctorDashboard();
+        if(pageId === 'n-reports') {
+            if(painChartInstance) painChartInstance.destroy();
+            if(medChartInstance) medChartInstance.destroy();
+            document.getElementById('stats-cards').innerHTML = '';
+            document.getElementById('stats-cards').classList.add('hidden');
+            document.getElementById('charts-area').classList.add('hidden');
+            document.getElementById('ai-report-output').innerText = '';
+        }
     }
 
     document.getElementById('pain-report-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const level = document.getElementById('report-pain-level').value;
-        if(!level) return showAlert('Select pain level', 'error');
-        const data = { patientId: currentUser.id, painLevel: level, medName: document.getElementById('report-med-name').value, medTime: document.getElementById('report-med-time').value, notes: document.getElementById('report-notes').value };
+        if(!level) { showAlert('Please select a pain level first!', 'error'); return; }
+        
+        const data = { 
+            patientId: currentUser.id, 
+            painLevel: level, 
+            painLocation: document.getElementById('report-pain-location').value,
+            symptoms: document.getElementById('report-symptoms').value,
+            medName: document.getElementById('report-med-name').value, 
+            medTime: document.getElementById('report-med-time').value, 
+            notes: document.getElementById('report-notes').value 
+        };
         try {
-            const res = await fetch('/api/submit-report', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
-            if((await res.json()).success) {
-                showAlert('Sent!', 'success');
-                e.target.reset();
-                document.querySelectorAll('.nprs-btn').forEach(b=>b.classList.remove('selected'));
-                loadPatientAlerts();
-            }
-        } catch(err) { showAlert('Failed', 'error'); }
+            const res = await fetch('/api/submit-report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            const result = await res.json();
+            if(result.success) { showAlert('Pain report sent to care team!', 'success'); e.target.reset(); document.querySelectorAll('.nprs-btn').forEach(b => b.classList.remove('selected')); document.getElementById('pain-level-text').innerText = ''; loadPatientAlerts(); }
+        } catch(err) { showAlert('Failed to send report', 'error'); }
     });
 
-    // --- FIXED ALERTS LOADING ---
     async function loadPatientAlerts() {
+        const res = await fetch(`/api/patient-reports/${currentUser.id}`);
+        const reports = await res.json();
         const container = document.getElementById('patient-alerts-list');
-        container.innerHTML = 'Loading...';
-        try {
-            // Use the specific endpoint for this patient
-            const res = await fetch(`/api/patient-reports/${currentUser.id}`);
-            if(!res.ok) throw new Error('Network response was not ok');
-            const reports = await res.json();
-            
-            if(reports.length === 0) {
-                container.innerHTML = '<p>No alerts yet.</p>';
-                return;
-            }
-
-            container.innerHTML = '';
-            reports.reverse().forEach(r => {
-                const div = document.createElement('div');
-                div.style.borderBottom = '1px solid #eee'; div.style.padding = '10px 0';
-                const statusColor = r.status === 'pending' ? 'orange' : 'green';
-                div.innerHTML = `
-                    <div style="display:flex;justify-content:space-between;">
-                        <strong>Pain: ${r.painLevel}</strong>
-                        <span style="color:${statusColor};font-size:0.8rem">${r.status.toUpperCase()}</span>
-                    </div>
-                    <div style="font-size:0.85rem;color:#666">${new Date(r.timestamp).toLocaleString()}</div>
-                    ${r.response ? `<div style="background:#f0f9ff;padding:8px;margin-top:5px;border-radius:4px;font-size:0.9rem;"><strong>Nurse:</strong> ${r.response}</div>` : '<div style="font-size:0.85rem;color:#999;margin-top:5px;">Waiting for response...</div>'}
-                `;
-                container.appendChild(div);
-            });
-        } catch(err) {
-            console.error(err);
-            container.innerHTML = '<p>Error loading alerts. Please refresh.</p>';
-        }
+        container.innerHTML = reports.length ? '' : '<p>No reports yet.</p>';
+        reports.reverse().forEach(r => {
+            const div = document.createElement('div');
+            div.style.borderBottom = '1px solid #eee'; div.style.padding = '10px 0';
+            let statusColor = r.status === 'pending' ? 'orange' : 'green';
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between;">
+                    <strong>Pain Level: ${r.painLevel} (${r.painLocation || 'General'})</strong>
+                    <span style="color:${statusColor}; font-size:0.8rem">${r.status.toUpperCase()}</span>
+                </div>
+                <div style="font-size:0.9rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>
+                ${r.symptoms ? `<div class="symptom-highlight"><strong>Symptoms:</strong> ${r.symptoms}</div>` : ''}
+                ${r.response ? `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse:</strong> ${r.response}</div>` : ''}
+            `;
+            container.appendChild(div);
+        });
     }
 
     function loadPatientProfile() {
         const p = currentUser;
+        const age = p.dob ? new Date().getFullYear() - new Date(p.dob).getFullYear() : 'N/A';
         document.getElementById('patient-profile-view').innerHTML = `
-            <p><strong>Name:</strong> ${p.name}</p><p><strong>NHS:</strong> ${p.nhsNumber||'N/A'}</p>
-            <p><strong>GP:</strong> ${p.gpPractice||'N/A'}</p><p><strong>History:</strong> ${p.medicalHistory||'None'}</p>
+            <p><strong>Name:</strong> ${p.name} | <strong>Age:</strong> ${age}</p>
+            <p><strong>NHS:</strong> ${p.nhsNumber || 'N/A'} | <strong>Phone:</strong> ${p.phone}</p>
+            <p><strong>GP:</strong> ${p.gpPractice || 'N/A'} (${p.gpPhone || 'N/A'})</p>
+            <p><strong>Address:</strong> ${p.address || 'N/A'}</p>
+            <p><strong>History:</strong> ${p.medicalHistory || 'None'}</p>
+            <p><strong>Regular Meds:</strong> ${p.regularMeds || 'None'}</p>
+            <p><strong>Pain Meds:</strong> ${p.painMeds || 'None'}</p>
         `;
     }
 
@@ -451,117 +566,258 @@
         const tbody = document.getElementById('patients-table-body');
         tbody.innerHTML = '';
         
-        const myReports = reports.filter(r => currentUser.role === 'pain-nurse' ? true : r.referralType === 'community-nurse');
-        
+        const myReports = reports.filter(r => {
+            if(currentUser.role === 'pain-nurse') return true;
+            if(currentUser.role === 'community-nurse') return r.referralType === 'community-nurse';
+            return false;
+        });
+
         if(myReports.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;text-align:center">No reports found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">No patient reports found.</td></tr>';
             return;
         }
 
         myReports.reverse().forEach(r => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #e2e8f0';
-            // Pass ID safely as string
-            const safeId = String(r._id || r.id); 
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
             tr.innerHTML = `
-                <td style="padding:12px"><strong>${r.patientName}</strong><br><small>${r.patientNHS}</small></td>
-                <td style="padding:12px;color:${r.painLevel>6?'red':'green'}">${r.painLevel}</td>
-                <td style="padding:12px">${r.medName}</td>
-                <td style="padding:12px"><span class="badge ${r.status==='pending'?'badge-patient':'badge-nurse'}">${r.status}</span></td>
-                <td style="padding:12px">
-                    ${r.status === 'pending' 
-                      ? `<button onclick="openModal('${safeId}', '${r.patientName}', '${r.patientNHS}', '${r.medHistory||''}')" class="btn btn-sm btn-primary">Respond</button>`
-                      : '<span style="color:green">✓ Responded</span>'}
+                <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
+                <td style="padding:12px;">
+                    <div style="font-weight:bold; color:${getPainColor(r.painLevel)}">Level: ${r.painLevel}</div>
+                    <div style="font-size:0.85rem;">📍 ${r.painLocation || 'Not specified'}</div>
                 </td>
+                <td style="padding:12px; font-size:0.9rem;">
+                    <div>${r.medName} @ ${r.medTime}</div>
+                    ${r.symptoms ? `<div class="symptom-highlight" style="font-size:0.8rem; margin-top:4px;">${r.symptoms}</div>` : ''}
+                </td>
+                <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
+                <td style="padding:12px;"><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button></td>
             `;
             tbody.appendChild(tr);
         });
     }
 
-    window.openModal = function(id, name, nhs, history) {
-        activeReportId = id;
-        document.getElementById('modal-patient-name').innerText = `Responding to: ${name}`;
-        document.getElementById('modal-patient-details').innerHTML = `
-            <div><strong>NHS:</strong> ${nhs}</div>
-            <div class="full-width"><strong>History:</strong> ${history}</div>
+    async function loadDoctorDashboard() {
+        const res = await fetch('/api/all-reports');
+        const reports = await res.json();
+        const container = document.getElementById('doctor-referrals-list');
+        container.innerHTML = '';
+        const myRefs = reports.filter(r => r.referralType === 'doctor');
+        if(myRefs.length === 0) { container.innerHTML = '<p>No pending referrals.</p>'; return; }
+        myRefs.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'card'; div.style.padding = '15px';
+            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel} (${r.painLocation})</p><p><strong>Symptoms:</strong> ${r.symptoms}</p><p><strong>Reason:</strong> ${r.notes}</p><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
+            container.appendChild(div);
+        });
+    }
+
+    function getPainColor(lvl) { return lvl <= 3 ? 'green' : (lvl <= 6 ? 'orange' : 'red'); }
+
+    window.openResponseModal = function(report) {
+        activeReportId = report.id;
+        currentReportData = report;
+        document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
+        
+        let age = 'N/A';
+        if(report.patientDob) {
+            const diff = new Date().getFullYear() - new Date(report.patientDob).getFullYear();
+            age = diff;
+        }
+
+        const infoHtml = `
+            <div><strong>Age:</strong> ${age} &nbsp;|&nbsp; <strong>NHS:</strong> ${report.patientNHS}</div>
+            <div><strong>Phone:</strong> ${report.patientPhone || 'Not provided'}</div>
+            <div class="full-width"><strong>Address:</strong> ${report.patientAddress || 'Not provided'}</div>
+            <div class="full-width"><strong>GP Practice:</strong> ${report.patientGP || 'N/A'} ${report.patientGpPhone ? `(<a href="tel:${report.patientGpPhone}">${report.patientGpPhone}</a>)` : ''}</div>
+            <div class="full-width"><strong>Medical History:</strong> ${report.medHistory || 'None'}</div>
+            <div class="full-width"><strong>Regular Meds:</strong> ${report.patientRegularMeds || 'None'}</div>
+            <div class="full-width"><strong>Pain Meds:</strong> ${report.patientPainMeds || 'None'}</div>
+            <div class="full-width" style="background:#fff; padding:10px; border:1px solid #ddd; margin-top:10px; border-radius:4px;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:5px;">
+                    <div><strong>Pain Level:</strong> ${report.painLevel}</div>
+                    <div><strong>Location:</strong> ${report.painLocation || 'Not specified'}</div>
+                </div>
+                <div><strong>Last Med:</strong> ${report.medName} at ${report.medTime}</div>
+                ${report.symptoms ? `<div class="symptom-highlight"><strong>Symptoms:</strong> ${report.symptoms}</div>` : ''}
+            </div>
         `;
+        
+        document.getElementById('modal-patient-details').innerHTML = infoHtml;
         document.getElementById('response-modal').classList.remove('hidden');
+        document.getElementById('modal-instructions').value = '';
         selectedTreatments = [];
-        document.querySelectorAll('.treatment-btn').forEach(b=>b.classList.remove('selected'));
+        document.querySelectorAll('.treatment-btn').forEach(b => b.classList.remove('selected'));
     };
 
-    window.closeModal = function() { document.getElementById('response-modal').classList.add('hidden'); };
-    
+    window.closeModal = function() { document.getElementById('response-modal').classList.add('hidden'); activeReportId = null; };
     window.addTreatment = function(btn, text) {
         btn.classList.toggle('selected');
-        if(selectedTreatments.includes(text)) selectedTreatments = selectedTreatments.filter(t=>t!==text);
+        if(selectedTreatments.includes(text)) selectedTreatments = selectedTreatments.filter(t => t !== text);
         else selectedTreatments.push(text);
     };
 
     window.submitResponse = async (type) => {
-        const instr = document.getElementById('modal-instructions').value;
-        let msg = "";
-        if(type==='plan') {
-            if(selectedTreatments.length) msg += "Treatments:\n" + selectedTreatments.map(t=>"- "+t).join('\n') + "\n\n";
-            msg += "Instructions:\n" + (instr || "None");
-        } else if(type==='refer-community') {
-            msg = "REFERRAL: " + (instr || "Assessment needed");
+        const instructions = document.getElementById('modal-instructions').value;
+        let finalMessage = "";
+        if(type === 'plan') {
+            if(selectedTreatments.length > 0) finalMessage += "Recommended Treatments:\n" + selectedTreatments.map(t=>"- "+t).join('\n') + "\n\n";
+            if(instructions) finalMessage += "Instructions:\n" + instructions;
+            if(!finalMessage) { alert("Add treatments or instructions"); return; }
+        } else if (type === 'refer-community') {
+            finalMessage = `REFERRAL TO COMMUNITY NURSE: ${instructions || 'Patient requires injection assessment.'}`;
+        } else if (type === 'refer-doctor') {
+            finalMessage = `REFERRAL TO DOCTOR: ${instructions || 'Urgent consultation required.'}`;
         }
-        
         try {
-            await fetch('/api/send-response', {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({ reportId: activeReportId, nurseId: currentUser.id, nurseName: currentUser.name, message: msg, referralType: type==='refer-community'?'community-nurse':null })
-            });
-            closeModal(); loadDashboard(); showAlert('Sent!', 'success');
-        } catch(err) { alert('Error sending'); }
+            await fetch('/api/send-response', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reportId: activeReportId, nurseId: currentUser.id, nurseName: currentUser.name, message: finalMessage, referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) }) });
+            closeModal(); loadDashboard(); showAlert('Response sent successfully', 'success');
+        } catch(err) { alert('Error sending response'); }
     };
 
-    function handleChatKey(e, type) { if(e.key==='Enter') sendChat(type); }
+    function handleChatKey(e, type) { if(e.key === 'Enter') sendChat(type); }
     
     async function sendChat(type) {
-        const inp = document.getElementById(type==='patient'?'patient-chat-input':'staff-chat-input');
-        const txt = inp.value.trim();
-        if(!txt) return;
-        await fetch('/api/send-message', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ senderId:currentUser.id, senderName:currentUser.name, receiverId:'global', message:txt, role:currentUser.role }) });
-        inp.value = ''; loadChat();
+        const inputId = type === 'patient' ? 'patient-chat-input' : 'staff-chat-input';
+        const input = document.getElementById(inputId);
+        const text = input.value.trim();
+        if(!text) return;
+        
+        await fetch('/api/send-message', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ 
+                senderId: currentUser.id, 
+                senderName: currentUser.name, 
+                receiverId: 'global', 
+                message: text, 
+                role: currentUser.role 
+            }) 
+        });
+        input.value = ''; 
+        loadChat();
     }
 
     async function loadChat() {
         const res = await fetch('/api/get-messages');
         const msgs = await res.json();
-        const container = document.getElementById(currentUser.role==='patient'?'patient-chat-window':'staff-chat-window');
+        
+        let containerId = 'staff-chat-window';
+        if(currentUser.role === 'patient') {
+            containerId = 'patient-chat-window';
+        }
+        
+        const container = document.getElementById(containerId);
+        if(!container) return;
+
         container.innerHTML = '';
         msgs.forEach(m => {
-            const d = document.createElement('div');
-            d.className = `message ${m.senderId===currentUser.id?'sent':'received'}`;
-            d.innerHTML = `<div>${m.message}</div><span class="message-meta">${m.senderName} • ${new Date(m.timestamp).toLocaleTimeString()}</span>`;
-            container.appendChild(d);
+            const div = document.createElement('div');
+            const isMe = m.senderId === currentUser.id;
+            div.className = `message ${isMe ? 'sent' : 'received'}`;
+            div.innerHTML = `
+                <div>${m.message}</div>
+                <span class="message-meta">${m.senderName} (${m.role}) • ${new Date(m.timestamp).toLocaleTimeString()}</span>
+            `;
+            container.appendChild(div);
         });
         container.scrollTop = container.scrollHeight;
     }
 
     window.generateReport = async (period) => {
-        const out = document.getElementById('ai-report-output');
-        out.innerText = "Generating...";
+        const output = document.getElementById('ai-report-output');
+        const statsCards = document.getElementById('stats-cards');
+        const chartsArea = document.getElementById('charts-area');
+        
+        output.innerHTML = "Generating AI analysis... please wait.";
+        statsCards.classList.add('hidden');
+        chartsArea.classList.add('hidden');
+        statsCards.innerHTML = '';
+        
         try {
-            const res = await fetch('/api/generate-ai-report', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({period}) });
-            const d = await res.json();
-            if(d.success) {
-                out.innerText = d.report;
-                if(d.stats) {
-                    document.getElementById('stats-cards').classList.remove('hidden');
-                    document.getElementById('stats-cards').innerHTML = `<div class="stat-card"><div class="stat-value">${d.stats.totalPatients}</div><div class="stat-label">Patients</div></div><div class="stat-card"><div class="stat-value">${d.stats.avgPain}</div><div class="stat-label">Avg Pain</div></div>`;
-                    // Charts logic omitted for brevity but included in previous full versions
+            const res = await fetch('/api/generate-ai-report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ period, role: currentUser.role }) });
+            const data = await res.json();
+            
+            if(data.success) {
+                output.innerHTML = data.report;
+                if(data.stats) {
+                    renderStats(data.stats);
+                    renderCharts(data.stats);
+                    statsCards.classList.remove('hidden');
+                    chartsArea.classList.remove('hidden');
                 }
+            } else {
+                output.innerHTML = "Error: " + data.message;
             }
-        } catch(e) { out.innerText = "Error"; }
+        } catch(err) { output.innerHTML = "Error connecting to AI service."; }
+    };
+
+    function renderStats(stats) {
+        const container = document.getElementById('stats-cards');
+        container.innerHTML = `
+            <div class="stat-card"><div class="stat-value">${stats.totalPatients}</div><div class="stat-label">Patients Treated</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.totalReports}</div><div class="stat-label">Total Reports</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.avgPain}</div><div class="stat-label">Avg Pain Level</div></div>
+            <div class="stat-card"><div class="stat-value">${stats.referrals}</div><div class="stat-label">Referrals Made</div></div>
+        `;
+    }
+
+    function renderCharts(stats) {
+        const ctxPain = document.getElementById('painChart').getContext('2d');
+        if(painChartInstance) painChartInstance.destroy();
+        
+        painChartInstance = new Chart(ctxPain, {
+            type: 'bar',
+            data: {
+                labels: ['0-3 (Mild)', '4-6 (Mod)', '7-10 (Severe)'],
+                datasets: [{
+                    label: 'Pain Level Distribution',
+                    data: [stats.painMild, stats.painMod, stats.painSevere],
+                    backgroundColor: ['#10b981', '#f59e0b', '#f43f5e']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+
+        const ctxMed = document.getElementById('medChart').getContext('2d');
+        if(medChartInstance) medChartInstance.destroy();
+
+        const medLabels = Object.keys(stats.topMeds);
+        const medData = Object.values(stats.topMeds);
+
+        medChartInstance = new Chart(ctxMed, {
+            type: 'doughnut',
+            data: {
+                labels: medLabels,
+                datasets: [{
+                    label: 'Medication Usage',
+                     medData,
+                    backgroundColor: ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e']
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    }
+
+    window.downloadReport = function() {
+        const text = document.getElementById('ai-report-output').innerText;
+        if(!text || text.includes("Generating")) return alert("Generate a report first!");
+        const blob = new Blob([text], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `SickleCell_Report_${new Date().toISOString().slice(0,10)}.txt`;
+        a.click();
+        alert("Report downloaded! You can open this text file and 'Print to PDF' from your browser or word processor.");
     };
 
     function showAlert(msg, type) {
-        const b = document.getElementById('alert-box');
-        b.innerText = msg; b.className = `alert alert-${type}`; b.style.display='block';
-        setTimeout(()=>b.style.display='none', 3000);
+        const box = document.getElementById('alert-box');
+        box.innerText = msg;
+        box.className = `alert alert-${type}`;
+        box.style.display = 'block';
+        setTimeout(() => box.style.display = 'none', 4000);
     }
 </script>
 </body>
