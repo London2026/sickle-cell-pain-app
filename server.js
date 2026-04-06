@@ -23,10 +23,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- MONGODB CONNECTION ---
 mongoose.connect(MONGO_URI)
-  .then(() => {
-      console.log('✅ MongoDB Connected');
-      seedData(); // Seed data only after connection
-  })
+  .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
 // --- DATABASE SCHEMAS ---
@@ -38,7 +35,8 @@ const userSchema = new mongoose.Schema({
 });
 
 const reportSchema = new mongoose.Schema({
-  patientId: String, patientName: String, patientNHS: String, patientGP: String, patientGpPhone: String,
+  patientId: mongoose.Schema.Types.ObjectId, // Fixed: Use ObjectId
+  patientName: String, patientNHS: String, patientGP: String, patientGpPhone: String,
   patientAddress: String, patientPhone: String, patientDob: String, patientRegularMeds: String, patientPainMeds: String,
   medHistory: String, 
   painLevel: String, 
@@ -63,38 +61,31 @@ const Message = mongoose.model('Message', messageSchema);
 
 // --- SEED DEMO DATA ---
 async function seedData() {
-  const count = await User.countDocuments();
-  if (count === 0) {
+  const userCount = await User.countDocuments();
+  if (userCount === 0) {
     const demoUsers = [
-      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07123456789', address: '123 Main St, London, SW1A 1AA' },
+      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07700 900000', address: '123 Main St, London' },
       { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
       { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
       { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
     ];
     await User.insertMany(demoUsers);
     console.log('🌱 Demo users seeded.');
-    
+
     // Create a sample report so the nurse dashboard isn't empty
-    const patient = await User.findOne({ role: 'patient' });
+    const patient = await User.findOne({ email: 'patient@demo.com' });
     if(patient) {
         await Report.create({
             patientId: patient._id,
             patientName: patient.name,
             patientNHS: patient.nhsNumber,
             patientGP: patient.gpPractice,
-            patientGpPhone: patient.gpPhone,
-            patientAddress: patient.address,
-            patientPhone: patient.phone,
-            patientDob: patient.dob,
-            patientRegularMeds: patient.regularMeds,
-            patientPainMeds: patient.painMeds,
             medHistory: patient.medicalHistory,
-            painLevel: '7',
+            painLevel: '8',
             painLocation: 'Lower Back',
             symptoms: 'Sharp, burning sensation',
             medName: 'Ibuprofen',
             medTime: '08:00',
-            notes: 'Pain increasing despite medication',
             status: 'pending'
         });
         console.log('📝 Sample pain report created.');
@@ -110,7 +101,6 @@ app.post('/api/register', async (req, res) => {
     const { role, email, password, name, ...details } = req.body;
     const existing = await User.findOne({ email });
     if (existing) return res.json({ success: false, message: 'Email already registered' });
-
     const newUser = await User.create({ role, email, password, name, ...details });
     res.json({ success: true, user: { id: newUser._id, name: newUser.name, role: newUser.role } });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
@@ -130,15 +120,16 @@ app.post('/api/login', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Submit Pain Report
+// Submit Pain Report (Fixed: Saves new fields & converts ID)
 app.post('/api/submit-report', async (req, res) => {
   try {
     const { patientId, painLevel, painLocation, symptoms, medName, medTime, notes } = req.body;
+    
     const patient = await User.findById(patientId);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
 
     const newReport = await Report.create({
-      patientId,
+      patientId: patient._id, // Stores as ObjectId
       patientName: patient.name,
       patientNHS: patient.nhsNumber || 'N/A',
       patientGP: patient.gpPractice || 'N/A',
@@ -149,9 +140,9 @@ app.post('/api/submit-report', async (req, res) => {
       patientRegularMeds: patient.regularMeds || '',
       patientPainMeds: patient.painMeds || '',
       medHistory: patient.medicalHistory || 'None',
-      painLevel, 
+      painLevel,
       painLocation: painLocation || 'Not specified',
-      symptoms: symptoms || 'None',
+      symptoms: symptoms || 'No description',
       medName, medTime, notes
     });
 
@@ -163,6 +154,7 @@ app.post('/api/submit-report', async (req, res) => {
 // Get Patient Reports
 app.get('/api/patient-reports/:id', async (req, res) => {
   try {
+    // Find reports where patientId matches the string or ObjectId
     const reports = await Report.find({ patientId: req.params.id }).sort({ timestamp: -1 });
     res.json(reports);
   } catch (err) { res.status(500).json([]); }
@@ -176,44 +168,38 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED)
+// Send Response (Fixed: Properly updates status and emits event)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
-    if (!reportId) {
-        return res.status(400).json({ success: false, message: 'Report ID is missing' });
-    }
+    if (!reportId) return res.status(400).json({ success: false, message: 'Report ID is missing' });
 
     // Use findByIdAndUpdate with correct options
     const updatedReport = await Report.findByIdAndUpdate(
-        reportId,
-        {
-            status: 'responded', 
-            response: message, 
-            responderName: nurseName, 
-            referralType: referralType || null
-        },
-        { new: true } // Return the updated document
+      reportId,
+      {
+        status: 'responded',
+        response: message,
+        responderName: nurseName,
+        referralType: referralType || null
+      },
+      { new: true, runValidators: true } // Returns the updated document
     );
 
     if (!updatedReport) {
-        return res.status(404).json({ success: false, message: 'Report not found' });
+      return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    console.log(`✅ Report ${reportId} updated successfully.`);
-    
-    // Emit event to refresh dashboards
-    io.emit('report-updated');
-    
+    io.emit('report-updated'); // Tell everyone to refresh
     res.json({ success: true, report: updatedReport });
   } catch (err) { 
-      console.error('Error sending response:', err);
+      console.error("Response Error:", err);
       res.status(500).json({ success: false, message: err.message }); 
   }
 });
 
-// Chat: Send Message
+// Chat Routes
 app.post('/api/send-message', async (req, res) => {
   try {
     const { senderId, senderName, receiverId, message, role } = req.body;
@@ -223,7 +209,6 @@ app.post('/api/send-message', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// Chat: Get Messages
 app.get('/api/get-messages', async (req, res) => {
   try {
     const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
@@ -231,7 +216,7 @@ app.get('/api/get-messages', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// AI: Generate Report (FIXED for Charts)
+// AI Report Route
 app.post('/api/generate-ai-report', async (req, res) => {
   try {
     const { period } = req.body;
@@ -242,74 +227,39 @@ app.post('/api/generate-ai-report', async (req, res) => {
     if (period === 'yearly') cutoff.setFullYear(now.getFullYear() - 1);
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
+    if (reports.length === 0) return res.json({ success: true, report: "No data available.", stats: null });
+
+    // Calculate Stats for Charts
+    const painMild = reports.filter(r => r.painLevel <= 3).length;
+    const painMod = reports.filter(r => r.painLevel > 3 && r.painLevel <= 6).length;
+    const painSevere = reports.filter(r => r.painLevel > 6).length;
     
-    // Calculate stats for charts
-    const totalPatients = new Set(reports.map(r => r.patientId)).size;
-    const totalReports = reports.length;
-    const avgPain = totalReports > 0 ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel||0), 0) / totalReports).toFixed(1) : 0;
-    const referrals = reports.filter(r => r.referralType).length;
-
-    // Pain Distribution
-    let painMild = 0, painMod = 0, painSevere = 0;
-    reports.forEach(r => {
-        const lvl = parseInt(r.painLevel||0);
-        if(lvl <= 3) painMild++;
-        else if(lvl <= 6) painMod++;
-        else painSevere++;
-    });
-
-    // Top Meds
     const medCounts = {};
-    reports.forEach(r => {
-        if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1;
-    });
-    // Sort and take top 5
+    reports.forEach(r => { if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1; });
     const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
     const topMeds = Object.fromEntries(sortedMeds);
 
-    // If no data, return early
-    if (reports.length === 0) {
-        return res.json({ 
-            success: true, 
-            report: "No data available for this period.",
-            stats: { totalPatients: 0, totalReports: 0, avgPain: 0, referrals: 0, painMild: 0, painMod: 0, painSevere: 0, topMeds: {} }
-        });
-    }
+    const stats = {
+        totalPatients: new Set(reports.map(r => r.patientId.toString())).size,
+        totalReports: reports.length,
+        avgPain: (reports.reduce((sum, r) => sum + parseInt(r.painLevel||0), 0) / reports.length).toFixed(1),
+        referrals: reports.filter(r => r.referralType).length,
+        painMild, painMod, painSevere,
+        topMeds
+    };
 
-    // AI Text Generation
-    let aiText = "Generating analysis...";
-    try {
-        const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo",
-        messages: [
-            { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
-            { role: "user", content: `Period: ${period}. Total Reports: ${totalReports}, Avg Pain: ${avgPain}, Referrals: ${referrals}. Provide a brief summary.` }
-        ]
-        });
-        aiText = completion.choices[0].message.content;
-    } catch (aiErr) {
-        aiText = "AI Service unavailable, but statistics are generated below.";
-        console.error("AI Error:", aiErr);
-    }
-
-    res.json({ 
-        success: true, 
-        report: aiText,
-        stats: {
-            totalPatients,
-            totalReports,
-            avgPain,
-            referrals,
-            painMild,
-            painMod,
-            painSevere,
-            topMeds
-        }
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
+        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(stats)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
+      ]
     });
 
+    res.json({ success: true, report: completion.choices[0].message.content, stats: stats });
   } catch (error) {
-    console.error("Report Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error("AI Error:", error);
+    res.json({ success: false, message: "AI Service Unavailable.", stats: null });
   }
 });
 
@@ -325,4 +275,5 @@ io.on('connection', (socket) => {
 // Start Server
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  seedData();
 });
