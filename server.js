@@ -24,8 +24,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // --- MONGODB CONNECTION ---
 mongoose.connect(MONGO_URI)
   .then(() => {
-    console.log('✅ MongoDB Connected');
-    seedData(); // Seed data only after connection is successful
+      console.log('✅ MongoDB Connected');
+      seedData(); // Seed data only after connection
   })
   .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
@@ -40,9 +40,16 @@ const userSchema = new mongoose.Schema({
 const reportSchema = new mongoose.Schema({
   patientId: String, patientName: String, patientNHS: String, patientGP: String, patientGpPhone: String,
   patientAddress: String, patientPhone: String, patientDob: String, patientRegularMeds: String, patientPainMeds: String,
-  medHistory: String, painLevel: String, medName: String, medTime: String, notes: String,
-  status: { type: String, default: 'pending' }, referralType: String, response: String,
-  responderName: String, timestamp: { type: Date, default: Date.now }
+  medHistory: String, 
+  painLevel: String, 
+  painLocation: String, // New Field
+  symptoms: String,     // New Field
+  medName: String, medTime: String, notes: String,
+  status: { type: String, default: 'pending' }, 
+  referralType: String, 
+  response: String,
+  responderName: String, 
+  timestamp: { type: Date, default: Date.now }
 });
 
 const messageSchema = new mongoose.Schema({
@@ -56,46 +63,42 @@ const Message = mongoose.model('Message', messageSchema);
 
 // --- SEED DEMO DATA ---
 async function seedData() {
-  try {
-    const userCount = await User.countDocuments();
-    if (userCount === 0) {
-      console.log('🌱 Seeding demo users...');
-      const demoUsers = [
-        { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07700 900000', address: '123 Test Street, London, SW1A 1AA' },
-        { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
-        { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
-        { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
-      ];
-      await User.insertMany(demoUsers);
-      
-      // Create a sample report so the nurse dashboard isn't empty
-      const patient = await User.findOne({ role: 'patient' });
-      if(patient) {
+  const count = await User.countDocuments();
+  if (count === 0) {
+    const demoUsers = [
+      { role: 'patient', name: 'John Doe', email: 'patient@demo.com', password: '123', nhsNumber: '1234567890', gpPractice: 'City Health Center', medicalHistory: 'Sickle Cell Anemia (HbSS)', regularMeds: 'Hydroxyurea', painMeds: 'Morphine, Ibuprofen', phone: '07123456789', address: '123 Main St, London, SW1A 1AA' },
+      { role: 'pain-nurse', name: 'Sarah Nurse (Pain Mgmt)', email: 'nurse@demo.com', password: '123', department: 'Pain Management' },
+      { role: 'community-nurse', name: 'Mike Nurse (Community)', email: 'community@demo.com', password: '123', department: 'Community Care' },
+      { role: 'doctor', name: 'Dr. Smith', email: 'doctor@demo.com', password: '123', department: 'Hematology' }
+    ];
+    await User.insertMany(demoUsers);
+    console.log('🌱 Demo users seeded.');
+    
+    // Create a sample report so the nurse dashboard isn't empty
+    const patient = await User.findOne({ role: 'patient' });
+    if(patient) {
         await Report.create({
-          patientId: patient._id,
-          patientName: patient.name,
-          patientNHS: patient.nhsNumber,
-          patientGP: patient.gpPractice,
-          patientGpPhone: patient.gpPhone || '',
-          patientAddress: patient.address || '',
-          patientPhone: patient.phone || '',
-          patientDob: patient.dob || '1990-01-01',
-          patientRegularMeds: patient.regularMeds,
-          patientPainMeds: patient.painMeds,
-          medHistory: patient.medicalHistory,
-          painLevel: '8',
-          medName: 'Paracetamol',
-          medTime: '10:00',
-          notes: 'Severe pain in legs',
-          status: 'pending'
+            patientId: patient._id,
+            patientName: patient.name,
+            patientNHS: patient.nhsNumber,
+            patientGP: patient.gpPractice,
+            patientGpPhone: patient.gpPhone,
+            patientAddress: patient.address,
+            patientPhone: patient.phone,
+            patientDob: patient.dob,
+            patientRegularMeds: patient.regularMeds,
+            patientPainMeds: patient.painMeds,
+            medHistory: patient.medicalHistory,
+            painLevel: '7',
+            painLocation: 'Lower Back',
+            symptoms: 'Sharp, burning sensation',
+            medName: 'Ibuprofen',
+            medTime: '08:00',
+            notes: 'Pain increasing despite medication',
+            status: 'pending'
         });
-        console.log('📝 Created sample pain report.');
-      }
-    } else {
-      console.log('ℹ️ Users already exist, skipping seed.');
+        console.log('📝 Sample pain report created.');
     }
-  } catch (err) {
-    console.error('Error seeding data:', err);
   }
 }
 
@@ -130,7 +133,7 @@ app.post('/api/login', async (req, res) => {
 // Submit Pain Report
 app.post('/api/submit-report', async (req, res) => {
   try {
-    const { patientId, painLevel, medName, medTime, notes } = req.body;
+    const { patientId, painLevel, painLocation, symptoms, medName, medTime, notes } = req.body;
     const patient = await User.findById(patientId);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
 
@@ -146,7 +149,10 @@ app.post('/api/submit-report', async (req, res) => {
       patientRegularMeds: patient.regularMeds || '',
       patientPainMeds: patient.painMeds || '',
       medHistory: patient.medicalHistory || 'None',
-      painLevel, medName, medTime, notes
+      painLevel, 
+      painLocation: painLocation || 'Not specified',
+      symptoms: symptoms || 'None',
+      medName, medTime, notes
     });
 
     io.emit('report-updated');
@@ -170,35 +176,40 @@ app.get('/api/all-reports', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// Send Response (FIXED: Handles MongoDB ObjectID correctly)
+// Send Response (FIXED)
 app.post('/api/send-response', async (req, res) => {
   try {
     const { reportId, nurseId, nurseName, message, referralType } = req.body;
     
     if (!reportId) {
-      return res.status(400).json({ success: false, message: 'Report ID is missing' });
+        return res.status(400).json({ success: false, message: 'Report ID is missing' });
     }
 
-    // Use findById which handles ObjectID conversion automatically
-    const report = await Report.findById(reportId);
-    
-    if (!report) {
-      console.error('Report not found for ID:', reportId);
-      return res.status(404).json({ success: false, message: 'Report not found' });
+    // Use findByIdAndUpdate with correct options
+    const updatedReport = await Report.findByIdAndUpdate(
+        reportId,
+        {
+            status: 'responded', 
+            response: message, 
+            responderName: nurseName, 
+            referralType: referralType || null
+        },
+        { new: true } // Return the updated document
+    );
+
+    if (!updatedReport) {
+        return res.status(404).json({ success: false, message: 'Report not found' });
     }
 
-    report.status = 'responded';
-    report.response = message;
-    report.responderName = nurseName;
-    if (referralType) report.referralType = referralType;
+    console.log(`✅ Report ${reportId} updated successfully.`);
     
-    await report.save();
-    
+    // Emit event to refresh dashboards
     io.emit('report-updated');
-    res.json({ success: true });
+    
+    res.json({ success: true, report: updatedReport });
   } catch (err) { 
-    console.error('Error sending response:', err);
-    res.status(500).json({ success: false, message: err.message }); 
+      console.error('Error sending response:', err);
+      res.status(500).json({ success: false, message: err.message }); 
   }
 });
 
@@ -220,7 +231,7 @@ app.get('/api/get-messages', async (req, res) => {
   } catch (err) { res.status(500).json([]); }
 });
 
-// AI: Generate Report
+// AI: Generate Report (FIXED for Charts)
 app.post('/api/generate-ai-report', async (req, res) => {
   try {
     const { period } = req.body;
@@ -231,28 +242,74 @@ app.post('/api/generate-ai-report', async (req, res) => {
     if (period === 'yearly') cutoff.setFullYear(now.getFullYear() - 1);
 
     const reports = await Report.find({ timestamp: { $gt: cutoff } });
-    if (reports.length === 0) return res.json({ success: true, report: "No data available." });
+    
+    // Calculate stats for charts
+    const totalPatients = new Set(reports.map(r => r.patientId)).size;
+    const totalReports = reports.length;
+    const avgPain = totalReports > 0 ? (reports.reduce((sum, r) => sum + parseInt(r.painLevel||0), 0) / totalReports).toFixed(1) : 0;
+    const referrals = reports.filter(r => r.referralType).length;
 
-    const dataSummary = {
-      totalPatientsTreated: new Set(reports.map(r => r.patientId)).size,
-      totalReports: reports.length,
-      avgPainLevel: (reports.reduce((sum, r) => sum + parseInt(r.painLevel), 0) / reports.length).toFixed(1),
-      commonMeds: reports.map(r => r.medName).reduce((acc, curr) => { acc[curr] = (acc[curr] || 0) + 1; return acc; }, {}),
-      referrals: reports.filter(r => r.referralType).length
-    };
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
-        { role: "user", content: `Period: ${period}. Data: ${JSON.stringify(dataSummary)}. Provide: 1. Executive Summary, 2. Pain Trends, 3. Medication Analysis, 4. Referrals.` }
-      ]
+    // Pain Distribution
+    let painMild = 0, painMod = 0, painSevere = 0;
+    reports.forEach(r => {
+        const lvl = parseInt(r.painLevel||0);
+        if(lvl <= 3) painMild++;
+        else if(lvl <= 6) painMod++;
+        else painSevere++;
     });
 
-    res.json({ success: true, report: completion.choices[0].message.content });
+    // Top Meds
+    const medCounts = {};
+    reports.forEach(r => {
+        if(r.medName) medCounts[r.medName] = (medCounts[r.medName] || 0) + 1;
+    });
+    // Sort and take top 5
+    const sortedMeds = Object.entries(medCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const topMeds = Object.fromEntries(sortedMeds);
+
+    // If no data, return early
+    if (reports.length === 0) {
+        return res.json({ 
+            success: true, 
+            report: "No data available for this period.",
+            stats: { totalPatients: 0, totalReports: 0, avgPain: 0, referrals: 0, painMild: 0, painMod: 0, painSevere: 0, topMeds: {} }
+        });
+    }
+
+    // AI Text Generation
+    let aiText = "Generating analysis...";
+    try {
+        const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo",
+        messages: [
+            { role: "system", content: "You are a healthcare data analyst. Summarize this Sickle Cell clinic data." },
+            { role: "user", content: `Period: ${period}. Total Reports: ${totalReports}, Avg Pain: ${avgPain}, Referrals: ${referrals}. Provide a brief summary.` }
+        ]
+        });
+        aiText = completion.choices[0].message.content;
+    } catch (aiErr) {
+        aiText = "AI Service unavailable, but statistics are generated below.";
+        console.error("AI Error:", aiErr);
+    }
+
+    res.json({ 
+        success: true, 
+        report: aiText,
+        stats: {
+            totalPatients,
+            totalReports,
+            avgPain,
+            referrals,
+            painMild,
+            painMod,
+            painSevere,
+            topMeds
+        }
+    });
+
   } catch (error) {
-    console.error("AI Error:", error);
-    res.json({ success: false, message: "AI Service Unavailable." });
+    console.error("Report Error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

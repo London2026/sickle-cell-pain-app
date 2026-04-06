@@ -166,42 +166,39 @@
                 <div id="p-home" class="page-section">
                     <div class="card">
                         <h2 class="section-title">Submit Pain Report</h2>
-                        <p style="margin-bottom: 20px;"><strong>Numerical Rating Scale (0 = no pain, 10 = worst possible pain)</strong> with instant routing to the pain management nurse.</p>
-                        
+                        <p><strong>Numerical Rating Scale (0 = no pain, 10 = worst possible pain)</strong> with instant routing to the pain management nurse.</p>
                         <form id="pain-report-form">
                             <label>Current Pain Level:</label>
                             <div class="nprs-container" id="nprs-scale"></div>
                             <input type="hidden" id="report-pain-level" required>
                             <div id="pain-level-text" style="text-align: center; font-weight: bold; color: var(--primary); margin-bottom: 15px; min-height: 24px;"></div>
 
-                            <!-- NEW: Pain Location Dropdown -->
+                            <!-- NEW FIELDS -->
                             <div class="form-group">
                                 <label>Pain Location</label>
                                 <select id="report-pain-location" required>
-                                    <option value="" disabled selected>Select location...</option>
-                                    <option value="Lower Back">Lower Back</option>
-                                    <option value="Upper Back">Upper Back</option>
-                                    <option value="Chest">Chest</option>
-                                    <option value="Abdomen">Abdomen</option>
-                                    <option value="Legs">Legs</option>
-                                    <option value="Arms">Arms</option>
+                                    <option value="">Select Location...</option>
                                     <option value="Head">Head</option>
+                                    <option value="Chest">Chest</option>
+                                    <option value="Back">Back</option>
+                                    <option value="Abdomen">Abdomen</option>
+                                    <option value="Arms">Arms</option>
+                                    <option value="Legs">Legs</option>
                                     <option value="Joints">Joints</option>
-                                    <option value="Other">Other</option>
+                                    <option value="Multiple Areas">Multiple Areas</option>
                                 </select>
                             </div>
-
-                            <!-- NEW: Symptoms Description -->
+                            
                             <div class="form-group">
                                 <label>Describe your symptoms and concerns</label>
-                                <textarea id="report-symptoms" rows="3" placeholder="e.g., sharp, dull, burning, throbbing, tingling..." required></textarea>
+                                <textarea id="report-symptoms" rows="3" placeholder="e.g., Sharp, dull, burning, throbbing..." required></textarea>
                             </div>
 
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                                 <div class="form-group"><label>Last Med Taken</label><input type="text" id="report-med-name" placeholder="e.g. Paracetamol"></div>
                                 <div class="form-group"><label>Time Taken</label><input type="time" id="report-med-time"></div>
                             </div>
-                            
+                            <div class="form-group"><label>Additional Notes (Optional)</label><textarea id="report-notes" rows="2"></textarea></div>
                             <button type="submit" class="btn btn-primary">Send Alert to Care Team</button>
                         </form>
                     </div>
@@ -237,7 +234,7 @@
                                     <tr style="background: #f1f5f9; text-align: left;">
                                         <th style="padding: 12px;">Patient</th>
                                         <th style="padding: 12px;">Pain (NPRS)</th>
-                                        <th style="padding: 12px;">Location/Symptoms</th>
+                                        <th style="padding: 12px;">Location</th>
                                         <th style="padding: 12px;">Status</th>
                                         <th style="padding: 12px;">Action</th>
                                     </tr>
@@ -339,7 +336,10 @@
         socket.on('connect', () => console.log('Connected'));
         socket.on('new-message', () => { if(currentUser) loadChat(); });
         socket.on('report-updated', () => {
-            if(currentUser?.role === 'patient') loadPatientAlerts();
+            if(currentUser?.role === 'patient') {
+                loadPatientAlerts();
+                showAlert('A nurse has responded to your alert!', 'success');
+            }
             if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) loadDashboard();
         });
     });
@@ -498,15 +498,14 @@
         }
     }
 
-    // --- FIXED SUBMIT LOGIC ---
     document.getElementById('pain-report-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const level = document.getElementById('report-pain-level').value;
         const location = document.getElementById('report-pain-location').value;
-        const symptoms = document.getElementById('report-symptoms').value.trim();
+        const symptoms = document.getElementById('report-symptoms').value;
 
         if(!level) { showAlert('Please select a pain level first!', 'error'); return; }
-        if(!location) { showAlert('Please select a pain location!', 'error'); return; }
+        if(!location) { showAlert('Please select pain location!', 'error'); return; }
         if(!symptoms) { showAlert('Please describe your symptoms!', 'error'); return; }
 
         const data = { 
@@ -516,9 +515,8 @@
             symptoms: symptoms,
             medName: document.getElementById('report-med-name').value, 
             medTime: document.getElementById('report-med-time').value, 
-            notes: document.getElementById('report-notes') ? document.getElementById('report-notes').value : ''
+            notes: document.getElementById('report-notes').value 
         };
-
         try {
             const res = await fetch('/api/submit-report', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
             const result = await res.json();
@@ -528,13 +526,8 @@
                 document.querySelectorAll('.nprs-btn').forEach(b => b.classList.remove('selected')); 
                 document.getElementById('pain-level-text').innerText = ''; 
                 loadPatientAlerts(); 
-            } else {
-                showAlert('Failed to send: ' + result.message, 'error');
             }
-        } catch(err) { 
-            console.error(err);
-            showAlert('Network error. Please try again.', 'error'); 
-        }
+        } catch(err) { showAlert('Failed to send report', 'error'); }
     });
 
     async function loadPatientAlerts() {
@@ -546,14 +539,21 @@
             const div = document.createElement('div');
             div.style.borderBottom = '1px solid #eee'; div.style.padding = '10px 0';
             let statusColor = r.status === 'pending' ? 'orange' : 'green';
+            let responseHtml = '';
+            if(r.response) {
+                responseHtml = `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse ${r.responderName}:</strong> ${r.response}</div>`;
+            } else {
+                responseHtml = `<div style="color:orange; font-size:0.8rem; margin-top:5px;">Waiting for response...</div>`;
+            }
+
             div.innerHTML = `
                 <div style="display:flex; justify-content:space-between;">
-                    <strong>Pain Level: ${r.painLevel} (${r.painLocation || 'General'})</strong>
+                    <strong>Pain Level: ${r.painLevel} (${r.painLocation})</strong>
                     <span style="color:${statusColor}; font-size:0.8rem">${r.status.toUpperCase()}</span>
                 </div>
-                <div style="font-size:0.85rem; color:#666; margin: 5px 0;">${r.symptoms || ''}</div>
-                <div style="font-size:0.8rem; color:#999;">${new Date(r.timestamp).toLocaleString()}</div>
-                ${r.response ? `<div style="background:#f0f9ff; padding:8px; margin-top:5px; border-radius:4px; font-size:0.9rem;"><strong>Nurse:</strong> ${r.response}</div>` : ''}
+                <div style="font-size:0.85rem; color:#666;">${new Date(r.timestamp).toLocaleString()}</div>
+                <div style="font-size:0.9rem; margin-top:4px;"><em>Symptoms:</em> ${r.symptoms}</div>
+                ${responseHtml}
             `;
             container.appendChild(div);
         });
@@ -593,17 +593,22 @@
         myReports.reverse().forEach(r => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #e2e8f0';
-            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
-            const symptomShort = (r.symptoms || 'No description').substring(0, 20) + '...';
+            
+            // Determine button state
+            let actionBtn = '';
+            if(r.status === 'pending') {
+                const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+                actionBtn = `<button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button>`;
+            } else {
+                actionBtn = `<span class="badge badge-nurse">Responded</span>`;
+            }
+
             tr.innerHTML = `
                 <td style="padding:12px;"><strong>${r.patientName}</strong><br><span style="font-size:0.8rem; color:#666">${r.patientNHS}</span></td>
                 <td style="padding:12px; font-weight:bold; color:${getPainColor(r.painLevel)}">${r.painLevel}</td>
-                <td style="padding:12px; font-size:0.9rem;">
-                    <div>${r.painLocation || 'General'}</div>
-                    <div style="font-size:0.75rem; color:#666;">${symptomShort}</div>
-                </td>
+                <td style="padding:12px; font-size:0.9rem;">${r.painLocation}</td>
                 <td style="padding:12px;"><span class="badge ${r.status === 'pending' ? 'badge-patient' : 'badge-nurse'}">${r.status}</span>${r.referralType ? `<br><small style="color:var(--warning)">Ref: ${r.referralType}</small>` : ''}</td>
-                <td style="padding:12px;"><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Respond</button></td>
+                <td style="padding:12px;">${actionBtn}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -619,8 +624,14 @@
         myRefs.forEach(r => {
             const div = document.createElement('div');
             div.className = 'card'; div.style.padding = '15px';
-            const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
-            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel}</p><p><strong>Symptoms:</strong> ${r.symptoms}</p><button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
+            let actionBtn = '';
+            if(r.status === 'pending') {
+                const safeR = JSON.stringify(r).replace(/'/g, "&#39;");
+                actionBtn = `<button onclick='openResponseModal(${safeR})' class="btn btn-sm btn-primary">Consult & Reply</button>`;
+            } else {
+                actionBtn = `<span class="badge badge-nurse">Responded</span>`;
+            }
+            div.innerHTML = `<h3>${r.patientName} (NHS: ${r.patientNHS})</h3><p><strong>Pain Level:</strong> ${r.painLevel} (${r.painLocation})</p><p><strong>Symptoms:</strong> ${r.symptoms}</p><p><strong>Reason:</strong> ${r.notes}</p>${actionBtn}`;
             container.appendChild(div);
         });
     }
@@ -628,7 +639,7 @@
     function getPainColor(lvl) { return lvl <= 3 ? 'green' : (lvl <= 6 ? 'orange' : 'red'); }
 
     window.openResponseModal = function(report) {
-        activeReportId = report.id;
+        activeReportId = report._id || report.id; // Handle both formats
         currentReportData = report;
         document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
         
@@ -647,8 +658,8 @@
             <div class="full-width"><strong>Regular Meds:</strong> ${report.patientRegularMeds || 'None'}</div>
             <div class="full-width"><strong>Pain Meds:</strong> ${report.patientPainMeds || 'None'}</div>
             <div class="full-width" style="background:#fff; padding:5px; border:1px solid #ddd; margin-top:5px;">
-                <strong>Current Alert:</strong> Pain Level ${report.painLevel} at ${report.painLocation || 'General'}<br>
-                <strong>Symptoms:</strong> ${report.symptoms || 'None'}<br>
+                <strong>Current Alert:</strong> Pain Level ${report.painLevel} at ${report.painLocation}<br>
+                <strong>Symptoms:</strong> ${report.symptoms}<br>
                 <strong>Last Med:</strong> ${report.medName} at ${report.medTime}
             </div>
         `;
@@ -679,10 +690,28 @@
         } else if (type === 'refer-doctor') {
             finalMessage = `REFERRAL TO DOCTOR: ${instructions || 'Urgent consultation required.'}`;
         }
+        
+        if(!activeReportId) { alert("Error: Report ID missing"); return; }
+
         try {
-            await fetch('/api/send-response', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ reportId: activeReportId, nurseId: currentUser.id, nurseName: currentUser.name, message: finalMessage, referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) }) });
-            closeModal(); loadDashboard(); showAlert('Response sent successfully', 'success');
-        } catch(err) { alert('Error sending response'); }
+            await fetch('/api/send-response', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ 
+                    reportId: activeReportId, 
+                    nurseId: currentUser.id, 
+                    nurseName: currentUser.name, 
+                    message: finalMessage, 
+                    referralType: type === 'refer-community' ? 'community-nurse' : (type === 'refer-doctor' ? 'doctor' : null) 
+                }) 
+            });
+            closeModal(); 
+            loadDashboard(); 
+            showAlert('Response sent successfully', 'success');
+        } catch(err) { 
+            console.error(err);
+            alert('Error sending response: ' + err.message); 
+        }
     };
 
     function handleChatKey(e, type) { if(e.key === 'Enter') sendChat(type); }
@@ -795,13 +824,19 @@
         const medLabels = Object.keys(stats.topMeds);
         const medData = Object.values(stats.topMeds);
 
+        if(medLabels.length === 0) {
+            // Hide chart if no data
+            document.getElementById('charts-area').classList.add('hidden');
+            return;
+        }
+
         medChartInstance = new Chart(ctxMed, {
             type: 'doughnut',
             data: {
                 labels: medLabels,
                 datasets: [{
                     label: 'Medication Usage',
-                     medData,
+                    data: medData,
                     backgroundColor: ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e']
                 }]
             },
