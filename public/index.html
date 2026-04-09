@@ -29,14 +29,14 @@
         .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; width: auto; }
         .auth-container { max-width: 450px; margin: 40px auto; }
         .role-tabs { display: flex; gap: 10px; margin-bottom: 20px; background: #e2e8f0; padding: 5px; border-radius: 10px; }
-        .role-tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; font-weight: 600; color: var(--secondary); transition: all 0.2s; }
+        .role-tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; font-weight: 600; color: var(--secondary); transition: all 0.2s; user-select: none; }
         .role-tab.active { background: white; color: var(--primary); shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .dashboard-grid { display: grid; grid-template-columns: 250px 1fr; gap: 20px; }
         .sidebar { background: var(--card); padding: 20px; border-radius: 12px; height: fit-content; }
-        .nav-item { display: block; padding: 12px; margin-bottom: 8px; border-radius: 8px; color: var(--text); text-decoration: none; cursor: pointer; transition: background 0.2s; }
+        .nav-item { display: block; padding: 12px; margin-bottom: 8px; border-radius: 8px; color: var(--text); text-decoration: none; cursor: pointer; transition: background 0.2s; user-select: none; }
         .nav-item:hover, .nav-item.active { background: #eff6ff; color: var(--primary); font-weight: 600; }
         .nprs-container { display: flex; justify-content: space-between; margin: 20px 0; flex-wrap: wrap; gap: 5px; }
-        .nprs-btn { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #e2e8f0; background: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+        .nprs-btn { width: 45px; height: 45px; border-radius: 50%; border: 2px solid #e2e8f0; background: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; user-select: none; }
         .nprs-btn:hover { transform: scale(1.1); border-color: var(--primary); }
         .nprs-btn.selected { background: var(--primary); color: white; border-color: var(--primary); transform: scale(1.15); box-shadow: 0 4px 10px rgba(14, 165, 233, 0.4); }
         .chat-box { border: 1px solid #e2e8f0; border-radius: 8px; height: 400px; display: flex; flex-direction: column; background: #f8fafc; }
@@ -47,7 +47,7 @@
         .message-meta { font-size: 0.75rem; opacity: 0.8; margin-top: 5px; display: block; }
         .chat-input-area { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; }
         .treatment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-bottom: 15px; }
-        .treatment-btn { background: white; border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; text-align: center; transition: all 0.2s; }
+        .treatment-btn { background: white; border: 1px solid #cbd5e1; padding: 10px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; text-align: center; transition: all 0.2s; user-select: none; }
         .treatment-btn:hover { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
         .treatment-btn.selected { background: var(--primary); color: white; border-color: var(--primary); }
         .hidden { display: none !important; }
@@ -71,6 +71,11 @@
         .charts-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
         .chart-wrapper { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; height: 300px; }
         @media (max-width: 768px) { .charts-container { grid-template-columns: 1fr; } .patient-info-box { grid-template-columns: 1fr; } }
+        
+        .demo-box { margin-top: 20px; padding: 15px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 8px; font-size: 0.85rem; }
+        .demo-box strong { color: #0369a1; }
+        .demo-row { display: flex; justify-content: space-between; margin-bottom: 5px; border-bottom: 1px dashed #bae6fd; padding-bottom: 2px; }
+        .demo-row:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -92,22 +97,36 @@
     <div id="auth-section" class="auth-container">
         <div class="card">
             <h2 style="text-align: center;">Welcome Back</h2>
-            <p style="text-align:center; color:#666; font-size:0.9rem;">Numerical Rating Scale (0 = no pain, 10 = worst possible pain) with instant routing to the pain management nurse.</p>
+            <p style="text-align:center; color:#666; font-size:0.9rem; margin-bottom: 20px;">
+                Numerical Rating Scale (0 = no pain, 10 = worst possible pain)<br>
+                Instant routing to the pain management nurse.
+            </p>
+            
             <div class="role-tabs">
-                <div class="role-tab active" onclick="switchAuthTab('patient')">Patient</div>
-                <div class="role-tab" onclick="switchAuthTab('pain-nurse')">Pain Nurse</div>
-                <div class="role-tab" onclick="switchAuthTab('community-nurse')">Community Nurse</div>
-                <div class="role-tab" onclick="switchAuthTab('doctor')">Doctor</div>
+                <div class="role-tab active" data-role="patient">Patient</div>
+                <div class="role-tab" data-role="pain-nurse">Pain Nurse</div>
+                <div class="role-tab" data-role="community-nurse">Community Nurse</div>
+                <div class="role-tab" data-role="doctor">Doctor</div>
             </div>
 
+            <!-- Login Form -->
             <form id="login-form">
                 <input type="hidden" id="login-role" value="patient">
-                <div class="form-group"><label>Email Address</label><input type="email" id="login-email" required placeholder="name@example.com"></div>
-                <div class="form-group"><label>Password</label><input type="password" id="login-password" required placeholder="••••••••"></div>
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <input type="email" id="login-email" required placeholder="name@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" required placeholder="••••••••">
+                </div>
                 <button type="submit" class="btn btn-primary">Secure Login</button>
-                <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">New here? <a href="#" onclick="toggleAuthMode('register')" style="color: var(--primary);">Create Account</a></p>
+                <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">
+                    New here? <a href="#" onclick="toggleAuthMode('register')" style="color: var(--primary); font-weight: 600;">Create Account</a>
+                </p>
             </form>
 
+            <!-- Register Form -->
             <form id="register-form" class="hidden">
                 <input type="hidden" id="reg-role" value="patient">
                 <div class="form-group"><label>Full Name</label><input type="text" id="reg-name" required></div>
@@ -131,13 +150,22 @@
                     <div class="form-group"><label>Department / Specialty</label><input type="text" id="reg-dept"></div>
                 </div>
 
-                <button type="submit" class="btn btn-primary">Register Account</button>
-                <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">Already registered? <a href="#" onclick="toggleAuthMode('login')" style="color: var(--primary);">Login</a></p>
+                <button type="submit" class="btn btn-primary">Create Account</button>
+                <p style="text-align: center; margin-top: 15px; font-size: 0.9rem;">
+                    Already registered? <a href="#" onclick="toggleAuthMode('login')" style="color: var(--primary); font-weight: 600;">Login</a>
+                </p>
             </form>
             
-            <div style="margin-top: 20px; padding: 10px; background: #f1f5f9; border-radius: 6px; font-size: 0.85rem;">
-                <strong>Demo Logins (Password: 123):</strong><br>
-                Patient: patient@demo.com | Nurse: nurse@demo.com | Community: community@demo.com | Doctor: doctor@demo.com
+            <!-- Demo Credentials Box -->
+            <div class="demo-box">
+                <strong>🧪 Demo Accounts (Password: 123)</strong>
+                <div class="demo-row"><span>Patient:</span> <code>patient@demo.com</code></div>
+                <div class="demo-row"><span>Pain Nurse:</span> <code>nurse@demo.com</code></div>
+                <div class="demo-row"><span>Comm. Nurse:</span> <code>community@demo.com</code></div>
+                <div class="demo-row"><span>Doctor:</span> <code>doctor@demo.com</code></div>
+                <div style="margin-top:8px; font-size:0.8rem; color:#666;">
+                    ℹ️ Select the role tab above, then enter the matching email and password "123".
+                </div>
             </div>
         </div>
     </div>
@@ -174,7 +202,6 @@
                             <input type="hidden" id="report-pain-level" required>
                             <div id="pain-level-text" style="text-align: center; font-weight: bold; color: var(--primary); margin-bottom: 15px; min-height: 24px;"></div>
 
-                            <!-- NEW FIELDS -->
                             <div class="form-group">
                                 <label>Pain Location</label>
                                 <select id="report-pain-location" required>
@@ -325,31 +352,61 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
+    // Global Variables
     let socket;
     let currentUser = null;
-    let currentRole = 'patient';
     let selectedTreatments = [];
     let activeReportId = null;
     let painChartInstance = null;
     let medChartInstance = null;
 
+    // Initialize App
     document.addEventListener('DOMContentLoaded', () => {
+        console.log("App Loaded");
         initNPRSScale();
+        setupRoleTabs();
         checkSession();
+        
+        // Socket Connection
         socket = io();
-        socket.on('connect', () => console.log('Connected'));
+        socket.on('connect', () => console.log('Socket Connected'));
         socket.on('new-message', () => { if(currentUser) loadChat(); });
         socket.on('report-updated', () => {
             if(currentUser?.role === 'patient') {
                 loadPatientAlerts(); 
                 showAlert('A nurse has responded to your alert!', 'success');
             }
-            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) loadDashboard();
+            if(['pain-nurse', 'community-nurse', 'doctor'].includes(currentUser?.role)) {
+                loadDashboard();
+            }
         });
     });
 
+    // Setup Role Tabs (Fixes clicking issue)
+    function setupRoleTabs() {
+        const tabs = document.querySelectorAll('.role-tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all
+                tabs.forEach(t => t.classList.remove('active'));
+                // Add to clicked
+                this.classList.add('active');
+                
+                const role = this.getAttribute('data-role');
+                document.getElementById('login-role').value = role;
+                document.getElementById('reg-role').value = role;
+                
+                // Toggle Fields
+                const isPatient = role === 'patient';
+                document.getElementById('patient-reg-fields').classList.toggle('hidden', !isPatient);
+                document.getElementById('staff-reg-fields').classList.toggle('hidden', isPatient);
+            });
+        });
+    }
+
     function initNPRSScale() {
         const container = document.getElementById('nprs-scale');
+        if(!container) return;
         const colors = ['#10b981', '#10b981', '#10b981', '#10b981', '#f59e0b', '#f59e0b', '#f59e0b', '#f43f5e', '#f43f5e', '#f43f5e', '#f43f5e'];
         for(let i=0; i<=10; i++) {
             const btn = document.createElement('div');
@@ -373,22 +430,19 @@
         document.getElementById('pain-level-text').style.color = color;
     }
 
-    function switchAuthTab(role) {
-        currentRole = role;
-        document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-        event.target.classList.add('active');
-        document.getElementById('login-role').value = role;
-        document.getElementById('reg-role').value = role;
-        const isPatient = role === 'patient';
-        document.getElementById('patient-reg-fields').classList.toggle('hidden', !isPatient);
-        document.getElementById('staff-reg-fields').classList.toggle('hidden', isPatient);
-    }
-
     function toggleAuthMode(mode) {
-        if(mode === 'register') { document.getElementById('login-form').classList.add('hidden'); document.getElementById('register-form').classList.remove('hidden'); } 
-        else { document.getElementById('login-form').classList.remove('hidden'); document.getElementById('register-form').classList.add('hidden'); }
+        const loginForm = document.getElementById('login-form');
+        const regForm = document.getElementById('register-form');
+        if(mode === 'register') { 
+            loginForm.classList.add('hidden'); 
+            regForm.classList.remove('hidden'); 
+        } else { 
+            loginForm.classList.remove('hidden'); 
+            regForm.classList.add('hidden'); 
+        }
     }
 
+    // Login Handler
     document.getElementById('login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const email = document.getElementById('login-email').value;
@@ -398,7 +452,11 @@
         alertBox.style.display = 'none';
 
         try {
-            const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ email, password, role }) });
+            const res = await fetch('/api/login', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ email, password, role }) 
+            });
             const data = await res.json();
             if (data.success) { 
                 currentUser = data.user; 
@@ -408,13 +466,23 @@
             } else { 
                 showAlert(data.message || 'Invalid credentials', 'error'); 
             }
-        } catch(err) { showAlert('Connection error.', 'error'); }
+        } catch(err) { 
+            console.error(err);
+            showAlert('Connection error. Check console.', 'error'); 
+        }
     });
 
+    // Register Handler
     document.getElementById('register-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const role = document.getElementById('reg-role').value;
-        const payload = { role, name: document.getElementById('reg-name').value, email: document.getElementById('reg-email').value, phone: document.getElementById('reg-phone').value, password: document.getElementById('reg-password').value };
+        const payload = { 
+            role, 
+            name: document.getElementById('reg-name').value, 
+            email: document.getElementById('reg-email').value, 
+            phone: document.getElementById('reg-phone').value, 
+            password: document.getElementById('reg-password').value 
+        };
         if(role === 'patient') {
             payload.dob = document.getElementById('reg-dob').value;
             payload.nhsNumber = document.getElementById('reg-nhs').value;
@@ -431,23 +499,35 @@
         try {
             const res = await fetch('/api/register', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
             const data = await res.json();
-            if(data.success) { showAlert('Registration successful! Please login.', 'success'); toggleAuthMode('login'); } 
-            else { showAlert(data.message, 'error'); }
+            if(data.success) { 
+                showAlert('Registration successful! Please login.', 'success'); 
+                toggleAuthMode('login'); 
+            } else { 
+                showAlert(data.message, 'error'); 
+            }
         } catch(err) { showAlert('Registration failed', 'error'); }
     });
 
     function checkSession() {
         const stored = localStorage.getItem('user');
-        if(stored) { currentUser = JSON.parse(stored); initDashboard(); }
+        if(stored) { 
+            currentUser = JSON.parse(stored); 
+            initDashboard(); 
+        }
     }
 
-    function logout() { localStorage.removeItem('user'); currentUser = null; location.reload(); }
+    function logout() { 
+        localStorage.removeItem('user'); 
+        currentUser = null; 
+        location.reload(); 
+    }
 
     function initDashboard() {
         document.getElementById('auth-section').classList.add('hidden');
         document.getElementById('dashboard-section').classList.remove('hidden');
         document.getElementById('user-info').classList.remove('hidden');
         document.getElementById('user-name-display').innerText = `${currentUser.name} (${currentUser.role.replace('-', ' ')})`;
+        
         document.getElementById('patient-nav').classList.add('hidden');
         document.getElementById('nurse-nav').classList.add('hidden');
         document.getElementById('doctor-nav').classList.add('hidden');
@@ -456,11 +536,11 @@
             document.getElementById('patient-nav').classList.remove('hidden');
             showPage('p-home');
             loadPatientProfile();
-            loadPatientAlerts(); // Force load alerts
+            loadPatientAlerts();
         } else if (['pain-nurse', 'community-nurse'].includes(currentUser.role)) {
             document.getElementById('nurse-nav').classList.remove('hidden');
             showPage('n-dashboard');
-            loadDashboard(); // Force load dashboard
+            loadDashboard();
             const isPainNurse = currentUser.role === 'pain-nurse';
             document.getElementById('btn-refer-community').style.display = isPainNurse ? 'block' : 'none';
             document.getElementById('btn-refer-doctor').style.display = isPainNurse ? 'block' : 'none';
@@ -475,12 +555,18 @@
         document.querySelectorAll('.page-section').forEach(p => p.classList.add('hidden'));
         document.getElementById(pageId).classList.remove('hidden');
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        event.target.classList.add('active');
+        // Find the nav item that calls this function and make it active
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            if(item.getAttribute('onclick').includes(pageId)) {
+                item.classList.add('active');
+            }
+        });
         
         if(pageId === 'p-chat' || pageId === 'n-chat' || pageId === 'd-chat') loadChat();
         if(pageId === 'n-dashboard') loadDashboard();
         if(pageId === 'd-dashboard') loadDoctorDashboard();
-        if(pageId === 'p-home') loadPatientAlerts(); // Reload alerts when returning home
+        if(pageId === 'p-home') loadPatientAlerts();
         if(pageId === 'n-reports') {
             if(painChartInstance) painChartInstance.destroy();
             if(medChartInstance) medChartInstance.destroy();
@@ -491,6 +577,7 @@
         }
     }
 
+    // Pain Report Submission
     document.getElementById('pain-report-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const level = document.getElementById('report-pain-level').value;
@@ -524,6 +611,7 @@
 
     async function loadPatientAlerts() {
         const container = document.getElementById('patient-alerts-list');
+        if(!container) return;
         container.innerHTML = '<p>Loading...</p>';
         try {
             const res = await fetch(`/api/patient-reports/${currentUser.id}`);
@@ -571,19 +659,23 @@
     function loadPatientProfile() {
         const p = currentUser;
         const age = p.dob ? new Date().getFullYear() - new Date(p.dob).getFullYear() : 'N/A';
-        document.getElementById('patient-profile-view').innerHTML = `
-            <p><strong>Name:</strong> ${p.name} | <strong>Age:</strong> ${age}</p>
-            <p><strong>NHS:</strong> ${p.nhsNumber || 'N/A'} | <strong>Phone:</strong> ${p.phone}</p>
-            <p><strong>GP:</strong> ${p.gpPractice || 'N/A'} (${p.gpPhone || 'N/A'})</p>
-            <p><strong>Address:</strong> ${p.address || 'N/A'}</p>
-            <p><strong>History:</strong> ${p.medicalHistory || 'None'}</p>
-            <p><strong>Regular Meds:</strong> ${p.regularMeds || 'None'}</p>
-            <p><strong>Pain Meds:</strong> ${p.painMeds || 'None'}</p>
-        `;
+        const div = document.getElementById('patient-profile-view');
+        if(div) {
+            div.innerHTML = `
+                <p><strong>Name:</strong> ${p.name} | <strong>Age:</strong> ${age}</p>
+                <p><strong>NHS:</strong> ${p.nhsNumber || 'N/A'} | <strong>Phone:</strong> ${p.phone}</p>
+                <p><strong>GP:</strong> ${p.gpPractice || 'N/A'} (${p.gpPhone || 'N/A'})</p>
+                <p><strong>Address:</strong> ${p.address || 'N/A'}</p>
+                <p><strong>History:</strong> ${p.medicalHistory || 'None'}</p>
+                <p><strong>Regular Meds:</strong> ${p.regularMeds || 'None'}</p>
+                <p><strong>Pain Meds:</strong> ${p.painMeds || 'None'}</p>
+            `;
+        }
     }
 
     async function loadDashboard() {
         const tbody = document.getElementById('patients-table-body');
+        if(!tbody) return;
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Loading reports...</td></tr>';
         
         try {
@@ -606,7 +698,6 @@
             myReports.reverse().forEach(r => {
                 const tr = document.createElement('tr');
                 tr.style.borderBottom = '1px solid #e2e8f0';
-                // Safe stringification for onclick
                 const reportStr = JSON.stringify(r).replace(/'/g, "&#39;");
                 
                 let actionBtn = `<button onclick='openResponseModal(${reportStr})' class="btn btn-sm btn-primary">Respond</button>`;
@@ -633,6 +724,7 @@
         const res = await fetch('/api/all-reports');
         const reports = await res.json();
         const container = document.getElementById('doctor-referrals-list');
+        if(!container) return;
         container.innerHTML = '';
         const myRefs = reports.filter(r => r.referralType === 'doctor');
         if(myRefs.length === 0) { container.innerHTML = '<p>No pending referrals.</p>'; return; }
@@ -648,8 +740,9 @@
     function getPainColor(lvl) { return lvl <= 3 ? 'green' : (lvl <= 6 ? 'orange' : 'red'); }
 
     window.openResponseModal = function(report) {
-        activeReportId = report._id || report.id; // Handle both formats
-        document.getElementById('modal-patient-name').innerText = `Responding to: ${report.patientName}`;
+        activeReportId = report._id || report.id;
+        const modalName = document.getElementById('modal-patient-name');
+        if(modalName) modalName.innerText = `Responding to: ${report.patientName}`;
         
         let age = 'N/A';
         if(report.patientDob) {
@@ -673,14 +766,25 @@
             </div>
         `;
         
-        document.getElementById('modal-patient-details').innerHTML = infoHtml;
-        document.getElementById('response-modal').classList.remove('hidden');
-        document.getElementById('modal-instructions').value = '';
+        const detailsDiv = document.getElementById('modal-patient-details');
+        if(detailsDiv) detailsDiv.innerHTML = infoHtml;
+        
+        const modal = document.getElementById('response-modal');
+        if(modal) modal.classList.remove('hidden');
+        
+        const instr = document.getElementById('modal-instructions');
+        if(instr) instr.value = '';
+        
         selectedTreatments = [];
         document.querySelectorAll('.treatment-btn').forEach(b => b.classList.remove('selected'));
     };
 
-    window.closeModal = function() { document.getElementById('response-modal').classList.add('hidden'); activeReportId = null; };
+    window.closeModal = function() { 
+        const modal = document.getElementById('response-modal');
+        if(modal) modal.classList.add('hidden'); 
+        activeReportId = null; 
+    };
+
     window.addTreatment = function(btn, text) {
         btn.classList.toggle('selected');
         if(selectedTreatments.includes(text)) selectedTreatments = selectedTreatments.filter(t => t !== text);
@@ -801,6 +905,7 @@
 
     function renderStats(stats) {
         const container = document.getElementById('stats-cards');
+        if(!container) return;
         container.innerHTML = `
             <div class="stat-card"><div class="stat-value">${stats.totalPatients}</div><div class="stat-label">Patients Treated</div></div>
             <div class="stat-card"><div class="stat-value">${stats.totalReports}</div><div class="stat-label">Total Reports</div></div>
@@ -810,31 +915,37 @@
     }
 
     function renderCharts(stats) {
-        const ctxPain = document.getElementById('painChart').getContext('2d');
+        const ctxPain = document.getElementById('painChart');
+        if(!ctxPain) return;
+        const ctxPainContext = ctxPain.getContext('2d');
+        
         if(painChartInstance) painChartInstance.destroy();
         
-        painChartInstance = new Chart(ctxPain, {
+        painChartInstance = new Chart(ctxPainContext, {
             type: 'bar',
             data: {
                 labels: ['0-3 (Mild)', '4-6 (Mod)', '7-10 (Severe)'],
                 datasets: [{
                     label: 'Pain Level Distribution',
-                     [stats.painMild, stats.painMod, stats.painSevere],
+                    data: [stats.painMild, stats.painMod, stats.painSevere],
                     backgroundColor: ['#10b981', '#f59e0b', '#f43f5e']
                 }]
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
 
-        const ctxMed = document.getElementById('medChart').getContext('2d');
+        const ctxMed = document.getElementById('medChart');
+        if(!ctxMed) return;
+        const ctxMedContext = ctxMed.getContext('2d');
+        
         if(medChartInstance) medChartInstance.destroy();
 
         const medLabels = Object.keys(stats.topMeds);
         const medData = Object.values(stats.topMeds);
 
-        medChartInstance = new Chart(ctxMed, {
+        medChartInstance = new Chart(ctxMedContext, {
             type: 'doughnut',
-             {
+            data: {
                 labels: medLabels,
                 datasets: [{
                     label: 'Medication Usage',
@@ -859,6 +970,7 @@
 
     function showAlert(msg, type) {
         const box = document.getElementById('alert-box');
+        if(!box) return;
         box.innerText = msg;
         box.className = `alert alert-${type}`;
         box.style.display = 'block';
