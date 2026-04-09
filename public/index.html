@@ -915,48 +915,57 @@
     }
 
     function renderCharts(stats) {
-        const ctxPain = document.getElementById('painChart');
-        if(!ctxPain) return;
-        const ctxPainContext = ctxPain.getContext('2d');
-        
+        // 1. Pain Chart (Bar)
+        const ctxPain = document.getElementById('painChart').getContext('2d');
         if(painChartInstance) painChartInstance.destroy();
         
-        painChartInstance = new Chart(ctxPainContext, {
+        painChartInstance = new Chart(ctxPain, {
             type: 'bar',
             data: {
                 labels: ['0-3 (Mild)', '4-6 (Mod)', '7-10 (Severe)'],
                 datasets: [{
                     label: 'Pain Level Distribution',
-                    data: [stats.painMild, stats.painMod, stats.painSevere],
+                    data: [stats.painMild || 0, stats.painMod || 0, stats.painSevere || 0],
                     backgroundColor: ['#10b981', '#f59e0b', '#f43f5e']
                 }]
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
 
-        const ctxMed = document.getElementById('medChart');
-        if(!ctxMed) return;
-        const ctxMedContext = ctxMed.getContext('2d');
-        
+        // 2. Meds Chart (Doughnut) - FIXED
+        const ctxMed = document.getElementById('medChart').getContext('2d');
         if(medChartInstance) medChartInstance.destroy();
+
+        // Safety check for empty data
+        if (!stats.topMeds || Object.keys(stats.topMeds).length === 0) {
+            // Show a "No Data" chart instead of crashing
+            medChartInstance = new Chart(ctxMed, {
+                type: 'doughnut',
+                data: {
+                    labels: ['No Data'],
+                    datasets: [{ data: [1], backgroundColor: ['#cbd5e1'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+            return; // Stop here
+        }
 
         const medLabels = Object.keys(stats.topMeds);
         const medData = Object.values(stats.topMeds);
 
-        medChartInstance = new Chart(ctxMedContext, {
+        medChartInstance = new Chart(ctxMed, {
             type: 'doughnut',
             data: {
                 labels: medLabels,
                 datasets: [{
                     label: 'Medication Usage',
-                     medData,
+                    data: medData,
                     backgroundColor: ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e']
                 }]
             },
             options: { responsive: true, maintainAspectRatio: false }
         });
     }
-
     window.downloadReport = function() {
         const text = document.getElementById('ai-report-output').innerText;
         if(!text || text.includes("Generating")) return alert("Generate a report first!");
