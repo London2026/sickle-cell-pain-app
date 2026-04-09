@@ -193,7 +193,7 @@ app.post('/api/send-response', async (req, res) => {
         responderName: nurseName,
         referralType: referralType || null
       },
-      { new: true } // Return the updated document
+      { returnDocument: 'after' } // Return the updated document
     );
 
     if (!updatedReport) {
